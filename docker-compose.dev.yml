@@ -1,0 +1,46 @@
+# Dev/staging environment — closer to production, no hot reload
+# Usage: docker compose -f docker-compose.dev.yml up
+
+services:
+  db:
+    image: postgres:17-alpine
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: jap_dev
+      POSTGRES_USER: jap
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-jap_dev_password}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jap -d jap_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/prod/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DATABASE_URL: postgresql://jap:${DB_PASSWORD:-jap_dev_password}@db:5432/jap_dev
+      REDIS_URL: redis://redis:6379/0
+    env_file:
+      - .env.dev
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data_dev:

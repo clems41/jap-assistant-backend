@@ -88,9 +88,8 @@ uv run python manage.py shell
 ## Conventions
 
 ### Language
-- **All code must be written in English** : variable names, function names, class names, comments, docstrings, commit messages, test names, model fields, serializer fields, URL names, error messages, log messages
-- This is non-negotiable — the project is intended to be deployed internationally and translated into multiple languages
-- The only exception is this documentation (CLAUDE.md, agents), which remains in French for the development team
+- **Code en anglais** : noms de variables, fonctions, classes, commentaires, docstrings, messages de commit, noms de tests, champs de modèles, champs de serializers, noms d'URL
+- **Contenu utilisateur en français** : messages d'erreur, labels, valeurs d'enum exposées à l'utilisateur — l'app est destinée à un public francophone uniquement, sans besoin de traduction
 
 ### Architecture
 - **Settings** : ne jamais modifier `base.py` pour du config spécifique à un env — utiliser `local.py`, `dev.py` ou `prod.py`

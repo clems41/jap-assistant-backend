@@ -51,11 +51,11 @@ If `docker compose exec api` fails (container not running), tell the user to run
 - Run `docker compose exec api uv run pytest` and confirm nothing is broken
 - Check coverage is above 80%
 
-## Language — non-negotiable
+## Language
 
-**All code must be written in English**: variable names, function names, class names, comments, docstrings, test method names, model fields, serializer fields, URL names, and all string literals in the codebase.
+**Code en anglais** : noms de variables, fonctions, classes, champs de modèles, champs de serializers, noms d'URL, méthodes de test.
 
-The project is intended to be deployed internationally and translated into multiple languages. French is only acceptable in this documentation.
+**Contenu utilisateur en français** : messages d'erreur, labels, valeurs d'enum exposées à l'utilisateur — l'app est destinée à un public francophone uniquement.
 
 ## Project conventions to follow
 

@@ -26,8 +26,8 @@ If `docker compose exec api` fails (container not running), tell the user to run
 ## Review checklist
 
 ### Language
-- [ ] All code is in **English**: variable names, function names, class names, model fields, serializer fields, URL names, comments, docstrings, test method names, error messages, log messages
-- [ ] No French (or any other language) in source code — the project targets international deployment
+- [ ] Code en **anglais** : noms de variables, fonctions, classes, champs de modèles, champs de serializers, noms d'URL, méthodes de test
+- [ ] Contenu utilisateur en **français** : messages d'erreur, labels, valeurs d'enum exposées à l'utilisateur (app francophone uniquement)
 
 ### Model
 - [ ] Custom `__str__` method defined

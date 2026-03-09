@@ -34,7 +34,11 @@ config/
 
 apps/
   users/          # Auth JWT, profil utilisateur
-  # Les autres apps sont créées au fur et à mesure
+  common/         # TimeStampedModel, utilitaires partagés
+  tournaments/    # Tournois, catégories, tableaux (à créer)
+  players/        # Joueurs, inscriptions, paires (à créer)
+  matches/        # Matchs, scores, arbitrage (à créer)
+  notifications/  # Temps réel WebSocket + Celery (à créer si besoin)
 
 docker/
   local/          # Dockerfile dev (hot reload)
@@ -91,6 +95,9 @@ uv run python manage.py shell
 ### Architecture
 - **Settings** : ne jamais modifier `base.py` pour du config spécifique à un env — utiliser `local.py`, `dev.py` ou `prod.py`
 - **Apps Django** : chaque app dans `apps/` a sa propre responsabilité métier. Créer une nouvelle app avec `uv run python manage.py startapp <name>` puis la déplacer dans `apps/`
+  - **Quand créer une nouvelle app** : quand le domaine métier est distinct et a son propre cycle de vie (ex: `tournaments`, `players`, `matches`). Ne pas créer une app pour 1-2 modèles accessoires qui appartiennent clairement à un domaine existant.
+  - **Répartition modèles/views** : un modèle et ses views vont dans la même app. Suivre le modèle dominant — si une view manipule principalement `Tournament`, elle va dans `tournaments/`. Les imports cross-apps sont normaux (ex: `matches` importe `Tournament` et `Player`), mais doivent aller dans une seule direction pour éviter les imports circulaires.
+  - **Code partagé** : mixins, validators, utilitaires → `apps/common/`. Intégrations externes (Stripe, email) → app dédiée.
 - **URLs** : versionnées sous `/api/v1/`, enregistrées dans `config/urls.py`
 - **Modèles** : toujours utiliser `AUTH_USER_MODEL` (jamais importer `User` directement), `ATOMIC_REQUESTS=True` activé
 - **Modèle de base** : tout modèle métier doit hériter de `TimeStampedModel` (défini dans `apps/common/models.py`) pour avoir `created_at` et `updated_at` automatiquement. Exception : `User` qui hérite de `AbstractUser` (qui fournit déjà `date_joined`)

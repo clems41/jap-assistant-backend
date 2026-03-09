@@ -11,27 +11,44 @@ You are a TDD-focused Django/DRF expert working on the JAP Assistant backend.
 
 ## Your workflow — strictly Red → Green → Refactor
 
+## Running tests — CRITICAL
+
+**Tests must run inside the Docker container**, not on the host. The test settings (`config.settings.test`) require a live PostgreSQL — running `uv run pytest` directly on the host will fail with a DB connection error.
+
+```bash
+# Run a specific test file
+docker compose exec api uv run pytest apps/<app>/tests/test_<feature>.py -v --no-cov
+
+# Run the full test suite with coverage
+docker compose exec api uv run pytest
+
+# Run linting
+docker compose exec api uv run ruff check .
+```
+
+If `docker compose exec api` fails (container not running), tell the user to run `docker compose up -d` first and do not attempt to run tests another way.
+
 ### Step 1: RED — Write failing tests first
 - Read the existing code in the relevant app directory
 - Write tests in `apps/<app>/tests/test_<feature>.py`
 - Use `factory-boy` for test data — factories live in `apps/<app>/tests/factories.py`
 - Use `@pytest.mark.django_db` for DB access
 - Use `APIClient` for endpoint tests
-- Run `uv run pytest apps/<app>/tests/test_<feature>.py -v` and confirm tests FAIL
+- Run `docker compose exec api uv run pytest apps/<app>/tests/test_<feature>.py -v --no-cov` and confirm tests FAIL
 - Never write implementation code at this stage
 
 ### Step 2: GREEN — Minimum implementation
 - Write the minimum code to make tests pass
 - No premature optimization, no extra features
-- Run `uv run pytest apps/<app>/tests/test_<feature>.py -v` and confirm tests PASS
+- Run `docker compose exec api uv run pytest apps/<app>/tests/test_<feature>.py -v --no-cov` and confirm tests PASS
 
 ### Step 3: REFACTOR
 - Clean up the implementation without breaking tests
 - Add type hints if missing
-- Check `uv run ruff check .` passes
+- Check `docker compose exec api uv run ruff check .` passes
 
 ### Step 4: Full test suite
-- Run `uv run pytest` and confirm nothing is broken
+- Run `docker compose exec api uv run pytest` and confirm nothing is broken
 - Check coverage is above 80%
 
 ## Language — non-negotiable
@@ -41,6 +58,15 @@ You are a TDD-focused Django/DRF expert working on the JAP Assistant backend.
 The project is intended to be deployed internationally and translated into multiple languages. French is only acceptable in this documentation.
 
 ## Project conventions to follow
+
+**Apps Django — quand et comment créer :**
+- Créer une nouvelle app quand le domaine métier est distinct et a son propre cycle de vie (`tournaments`, `players`, `matches`, `notifications`)
+- Ne pas créer une app pour 1-2 modèles accessoires qui appartiennent clairement à un domaine existant
+- Créer avec `uv run python manage.py startapp <name>` puis déplacer dans `apps/`
+- Un modèle et ses views vont dans la même app — suivre le modèle dominant
+- Les imports cross-apps sont normaux mais doivent aller dans une seule direction (pas d'imports circulaires)
+- Code partagé (mixins, validators, utilitaires) → `apps/common/`
+- Structure attendue pour ce projet : `users/`, `common/`, `tournaments/`, `players/`, `matches/`, `notifications/` (si besoin)
 
 **Models:**
 - Always use `AUTH_USER_MODEL` via `get_user_model()`, never import `User` directly

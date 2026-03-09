@@ -27,7 +27,6 @@ class TestRegister:
     def test_register_success(self, client: APIClient) -> None:
         payload = {
             "email": "new@example.com",
-            "username": "newuser",
             "password": "StrongPass123!",
             "password_confirm": "StrongPass123!",
         }
@@ -37,7 +36,6 @@ class TestRegister:
     def test_register_password_mismatch(self, client: APIClient) -> None:
         payload = {
             "email": "new@example.com",
-            "username": "newuser",
             "password": "StrongPass123!",
             "password_confirm": "WrongPass456!",
         }
@@ -47,7 +45,6 @@ class TestRegister:
     def test_register_duplicate_email(self, client: APIClient, user) -> None:
         payload = {
             "email": user.email,
-            "username": "anotheruser",
             "password": "StrongPass123!",
             "password_confirm": "StrongPass123!",
         }

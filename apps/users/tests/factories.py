@@ -7,7 +7,6 @@ User = get_user_model()
 
 class UserFactory(DjangoModelFactory):
     email = factory.Sequence(lambda n: f"user{n}@example.com")
-    username = factory.Sequence(lambda n: f"user{n}")
     first_name = factory.Faker("first_name", locale="fr_FR")
     last_name = factory.Faker("last_name", locale="fr_FR")
     is_active = True

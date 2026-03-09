@@ -121,6 +121,32 @@ uv run python manage.py shell
 - Retourner des codes HTTP sémantiques (201 pour création, 204 pour suppression, etc.)
 - Pagination activée par défaut (20 items)
 
+### Gestion des erreurs
+
+Toutes les erreurs API suivent un format unifié géré par `apps.common.exceptions.custom_exception_handler` (enregistré via `REST_FRAMEWORK["EXCEPTION_HANDLER"]`).
+
+**Format de réponse d'erreur :**
+```json
+{
+  "message":   "Les données envoyées sont invalides.",
+  "code":      "validation_error",
+  "fields":    { "email": ["Ce champ est requis."] },
+  "detail":    "ValidationError: ...",
+  "traceback": "Traceback (most recent call last): ..."
+}
+```
+- `message` — message lisible par l'utilisateur, **en français**, à afficher côté front
+- `code` — code machine (ex: `validation_error`, `not_found`, `authentication_failed`)
+- `fields` — erreurs par champ, **présent uniquement pour les 400 de validation**
+- `detail` — message dev avec type d'exception + message — **présent uniquement si `DEBUG=True`**
+- `traceback` — stacktrace Python — **présent uniquement si `DEBUG=True`**
+
+**Règles :**
+- Ne jamais retourner `Response({"field": "error"}, status=400)` manuellement — utiliser `raise ValidationError({"field": ["message."]})`
+- Les 500 non gérés sont automatiquement catchés, loggés et retournés dans ce format
+- Les messages `message` et les valeurs de `fields` sont **en français** (public francophone)
+- Les messages `detail` sont **en anglais** (devs)
+
 ### Swagger (drf-spectacular)
 - **Tout endpoint doit être visible dans `/api/docs/`** — c'est une exigence, pas une option
 - `generics.*` et `ModelViewSet` : inférence automatique, rien à faire

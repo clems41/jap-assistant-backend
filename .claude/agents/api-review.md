@@ -44,6 +44,14 @@ If `docker compose exec api` fails (container not running), tell the user to run
 - [ ] `create()` / `update()` don't contain business logic — delegate to model managers or services
 - [ ] Nested serializers: consider whether writable or read-only
 
+### Error handling
+- [ ] No `return Response({"field": "error"}, status=400)` — must use `raise ValidationError({"field": ["msg."]})`
+- [ ] Non-field validation errors use `raise ValidationError(["message globale."])`, not `{"detail": "..."}`
+- [ ] Service-layer errors surfaced in views via DRF exceptions (`NotFound`, `PermissionDenied`, `ValidationError`), never bare Python exceptions
+- [ ] No naked `try/except Exception` that swallows errors — unhandled exceptions are caught globally and logged as 500
+- [ ] `message` / `fields` values are **in French** (user-facing); `detail` is **in English** (dev-facing)
+- [ ] No sensitive data in error messages (no stack traces, internal paths, DB details in production)
+
 ### View
 - [ ] `permission_classes` declared explicitly (never rely on global defaults silently)
 - [ ] `queryset` uses `.select_related()` / `.prefetch_related()` where relevant (N+1 check)

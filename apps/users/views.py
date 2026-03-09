@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -34,11 +35,8 @@ class ChangePasswordView(APIView):
 
         user = request.user
         if not user.check_password(serializer.validated_data["old_password"]):
-            return Response(
-                {"old_password": "Wrong password."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ValidationError({"old_password": ["Mot de passe actuel incorrect."]})
 
         user.set_password(serializer.validated_data["new_password"])
         user.save(update_fields=["password"])
-        return Response({"detail": "Password changed successfully."})
+        return Response({"message": "Mot de passe modifié avec succès."})

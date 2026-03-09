@@ -87,6 +87,28 @@ If `docker compose exec api` fails (container not running), tell the user to run
 - Use `read_only_fields` on the Meta class, not `read_only=True` on individual fields
 - Always `raise_exception=True` in `.is_valid()`
 
+**Error handling:**
+
+All errors are handled by `apps.common.exceptions.custom_exception_handler` (registered globally). Every error response follows this shape:
+```json
+{
+  "message":   "Message lisible par l'utilisateur (fr)",
+  "code":      "machine_readable_code",
+  "fields":    { "field_name": ["error msg"] },
+  "detail":    "ExcType: exc message",
+  "traceback": "Traceback ..."
+}
+```
+- `message` / `fields` values → **French** (user-facing)
+- `detail` → **English** (dev-facing), present only when `DEBUG=True`
+- `traceback` → present only when `DEBUG=True`
+
+Rules:
+- **Never** `return Response({"field": "error"}, status=400)` — always `raise ValidationError({"field": ["message."]})`
+- For non-field errors: `raise ValidationError(["message globale."])`
+- For service-layer errors caught in a view: re-raise as the appropriate DRF exception (`NotFound`, `PermissionDenied`, `ValidationError`…)
+- Unhandled exceptions are automatically caught, logged, and returned as 500 — no need for try/except in views
+
 **Views:**
 - Use `generics.*` for simple CRUD, `ViewSet` for resource collections
 - Always declare `permission_classes` explicitly

@@ -101,6 +101,10 @@ def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Respons
             excluded = {"non_field_errors", "detail"}
             field_errors = {k: v for k, v in data.items() if k not in excluded}
             fields = field_errors or None
+            if fields and not non_field and "detail" not in data:
+                first_errors = next(iter(fields.values()))
+                if first_errors:
+                    message = str(first_errors[0])
         elif isinstance(data, list) and data:
             message = str(data[0])
 

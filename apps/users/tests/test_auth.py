@@ -39,6 +39,7 @@ class TestRegister:
         }
         response = client.post(self.url, payload)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["message"] == "Un compte existe déjà avec cette adresse email."
 
 
 @pytest.mark.django_db

@@ -35,6 +35,14 @@ _USER_MESSAGES: dict[int, str] = {
     500: "Une erreur interne est survenue. Veuillez réessayer plus tard.",
 }
 
+_AUTH_FAILED_CODES: dict[str, str] = {
+    "no_active_account": "Email ou mot de passe incorrect.",
+    "authentication_failed": "Email ou mot de passe incorrect.",
+    "token_not_valid": "Session expirée. Veuillez vous reconnecter.",
+    "user_not_found": "Email ou mot de passe incorrect.",
+    "user_inactive": "Ce compte est désactivé.",
+}
+
 
 def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Response:
     """
@@ -76,6 +84,10 @@ def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Respons
     http_status: int = response.status_code
     message: str = _USER_MESSAGES.get(http_status, "Une erreur est survenue.")
     fields: dict[str, Any] | None = None
+
+    if http_status == 401:
+        exc_code: str = getattr(exc, "default_code", "") or ""
+        message = _AUTH_FAILED_CODES.get(exc_code, message)
 
     if http_status == 400:
         data = response.data

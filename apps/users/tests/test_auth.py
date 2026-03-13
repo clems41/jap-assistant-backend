@@ -65,6 +65,12 @@ class TestTokenObtain:
     def test_obtain_token_wrong_password(self, client: APIClient, user) -> None:
         response = client.post(self.url, {"email": user.email, "password": "wrongpass"})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.data["message"] == "Email ou mot de passe incorrect."
+
+    def test_obtain_token_unknown_email(self, client: APIClient) -> None:
+        response = client.post(self.url, {"email": "nobody@example.com", "password": "anypass"})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.data["message"] == "Email ou mot de passe incorrect."
 
 
 @pytest.mark.django_db

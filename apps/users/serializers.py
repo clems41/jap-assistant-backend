@@ -14,16 +14,10 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
-    password_confirm = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
-        fields = ["email", "password", "password_confirm", "first_name", "last_name"]
-
-    def validate(self, attrs: dict) -> dict:
-        if attrs["password"] != attrs.pop("password_confirm"):
-            raise serializers.ValidationError({"password": ["Les mots de passe ne correspondent pas."]})
-        return attrs
+        fields = ["email", "password", "first_name", "last_name"]
 
     def create(self, validated_data: dict) -> User:
         return User.objects.create_user(**validated_data)
@@ -32,9 +26,3 @@ class RegisterSerializer(serializers.ModelSerializer):
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True, validators=[validate_password])
-    new_password_confirm = serializers.CharField(write_only=True)
-
-    def validate(self, attrs: dict) -> dict:
-        if attrs["new_password"] != attrs.pop("new_password_confirm"):
-            raise serializers.ValidationError({"new_password": "Passwords do not match."})
-        return attrs

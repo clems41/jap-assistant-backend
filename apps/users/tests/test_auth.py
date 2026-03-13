@@ -28,25 +28,14 @@ class TestRegister:
         payload = {
             "email": "new@example.com",
             "password": "StrongPass123!",
-            "password_confirm": "StrongPass123!",
         }
         response = client.post(self.url, payload)
         assert response.status_code == status.HTTP_201_CREATED
-
-    def test_register_password_mismatch(self, client: APIClient) -> None:
-        payload = {
-            "email": "new@example.com",
-            "password": "StrongPass123!",
-            "password_confirm": "WrongPass456!",
-        }
-        response = client.post(self.url, payload)
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_register_duplicate_email(self, client: APIClient, user) -> None:
         payload = {
             "email": user.email,
             "password": "StrongPass123!",
-            "password_confirm": "StrongPass123!",
         }
         response = client.post(self.url, payload)
         assert response.status_code == status.HTTP_400_BAD_REQUEST

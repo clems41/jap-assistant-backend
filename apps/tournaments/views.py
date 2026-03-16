@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 
 from apps.tournaments.models import Tournament
 from apps.tournaments.permissions import IsOwner
-from apps.tournaments.serializers import TournamentSerializer
+from apps.tournaments.serializers import LastLeagueSerializer, TournamentSerializer
 
 
 def enum_to_value_label(choices_class: type[TextChoices]) -> list[dict[str, str]]:
@@ -78,3 +78,20 @@ class TournamentDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return Tournament.objects.filter(owner=self.request.user)
+
+
+class LastLeagueView(APIView):
+    """Return the league of the most recently created tournament by the authenticated user."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: LastLeagueSerializer})
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        tournament = (
+            Tournament.objects.filter(owner=request.user)
+            .order_by("-created_at")
+            .only("league")
+            .first()
+        )
+        league = tournament.league if tournament is not None else None
+        return Response({"league": league})

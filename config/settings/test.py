@@ -31,3 +31,9 @@ CHANNEL_LAYERS = {
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
+
+# ---------------------------------------------------------------------------
+# Email — in-memory backend for tests (no real emails sent)
+# ---------------------------------------------------------------------------
+
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"

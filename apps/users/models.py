@@ -1,5 +1,12 @@
-from django.contrib.auth.models import AbstractUser, UserManager as DjangoUserManager
+import uuid
+from datetime import timedelta
+
+from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.db import models
+from django.utils import timezone
+
+from apps.common.models import TimeStampedModel
 
 
 class UserManager(DjangoUserManager):
@@ -42,3 +49,30 @@ class User(AbstractUser):
 
     def __str__(self) -> str:
         return self.email
+
+
+class PasswordResetToken(TimeStampedModel):
+    """Single-use token for password reset. Valid for 1 hour."""
+
+    TOKEN_EXPIRY = timedelta(hours=1)
+
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="password_reset_tokens",
+    )
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    is_used = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Password Reset Token"
+        verbose_name_plural = "Password Reset Tokens"
+
+    def __str__(self) -> str:
+        return f"PasswordResetToken({self.token}) for {self.user.email}"
+
+    def is_valid(self) -> bool:
+        """Return True if the token is not expired and not yet used."""
+        if self.is_used:
+            return False
+        return timezone.now() < self.created_at + self.TOKEN_EXPIRY

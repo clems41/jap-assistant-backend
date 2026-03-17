@@ -58,13 +58,38 @@ class TournamentGenderEnumView(APIView):
 
 
 class TournamentListCreateView(generics.ListCreateAPIView):
-    """List the authenticated user's tournaments or create a new one."""
+    """List the authenticated user's tournaments or create a new one.
+
+    Supported query parameters:
+    - ``category``: filter by exact category value (e.g. ``P100``)
+    - ``gender``: filter by exact gender value (e.g. ``Homme``)
+    - ``start_date``: lower bound (inclusive) on ``Tournament.start_date`` — ISO 8601 date
+    - ``end_date``: upper bound (inclusive) on ``Tournament.start_date`` — ISO 8601 date
+    """
 
     serializer_class = TournamentSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Tournament.objects.filter(owner=self.request.user)
+        qs = Tournament.objects.filter(owner=self.request.user)
+
+        category: str | None = self.request.query_params.get("category")
+        if category is not None:
+            qs = qs.filter(category=category)
+
+        gender: str | None = self.request.query_params.get("gender")
+        if gender is not None:
+            qs = qs.filter(gender=gender)
+
+        start_date: str | None = self.request.query_params.get("start_date")
+        if start_date is not None:
+            qs = qs.filter(start_date__gte=start_date)
+
+        end_date: str | None = self.request.query_params.get("end_date")
+        if end_date is not None:
+            qs = qs.filter(start_date__lte=end_date)
+
+        return qs
 
     def perform_create(self, serializer: BaseSerializer) -> None:
         serializer.save(owner=self.request.user)

@@ -7,11 +7,11 @@ from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
 
 LIST_CREATE_URL = "/api/v1/tournaments/"
-DETAIL_URL = "/api/v1/tournaments/{pk}"
+DETAIL_URL = "/api/v1/tournaments/{pk}/"
 
-CATEGORIES_URL = "/api/v1/tournaments/enums/categories"
-LEAGUES_URL = "/api/v1/tournaments/enums/leagues"
-GENDERS_URL = "/api/v1/tournaments/enums/genders"
+CATEGORIES_URL = "/api/v1/tournaments/enums/categories/"
+LEAGUES_URL = "/api/v1/tournaments/enums/leagues/"
+GENDERS_URL = "/api/v1/tournaments/enums/genders/"
 
 
 @pytest.fixture
@@ -443,7 +443,131 @@ class TestEnumGenders:
 # Last league
 # ---------------------------------------------------------------------------
 
-LAST_LEAGUE_URL = "/api/v1/tournaments/last-league"
+LAST_LEAGUE_URL = "/api/v1/tournaments/last-league/"
+
+# ---------------------------------------------------------------------------
+# Filters
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestFilterTournaments:
+    def test_filter_by_category_returns_matching_tournaments(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?category=P100 returns only P100 tournaments."""
+        TournamentFactory.create_batch(2, owner=user, category=Tournament.Category.P100)
+        TournamentFactory.create_batch(3, owner=user, category=Tournament.Category.P250)
+        response = authenticated_client.get(LIST_CREATE_URL, {"category": "P100"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 2
+        assert all(t["category"] == "P100" for t in response.data["results"])
+
+    def test_filter_by_category_no_match_returns_empty(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?category=P500 returns empty list when no P500 tournaments exist."""
+        TournamentFactory.create_batch(2, owner=user, category=Tournament.Category.P100)
+        response = authenticated_client.get(LIST_CREATE_URL, {"category": "P500"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 0
+
+    def test_filter_by_gender_returns_matching_tournaments(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?gender=Homme returns only male tournaments."""
+        TournamentFactory.create_batch(2, owner=user, gender=Tournament.Gender.MALE)
+        TournamentFactory.create_batch(1, owner=user, gender=Tournament.Gender.FEMALE)
+        TournamentFactory.create_batch(1, owner=user, gender=Tournament.Gender.MIXED)
+        response = authenticated_client.get(LIST_CREATE_URL, {"gender": "Homme"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 2
+        assert all(t["gender"] == "Homme" for t in response.data["results"])
+
+    def test_filter_by_gender_no_match_returns_empty(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?gender=Femme returns empty list when no female tournaments exist."""
+        TournamentFactory.create_batch(2, owner=user, gender=Tournament.Gender.MALE)
+        response = authenticated_client.get(LIST_CREATE_URL, {"gender": "Femme"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 0
+
+    def test_filter_by_start_date_lower_bound(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?start_date=2026-06-01 returns tournaments whose start_date >= 2026-06-01."""
+        TournamentFactory(owner=user, start_date="2026-05-15")
+        TournamentFactory(owner=user, start_date="2026-06-01")
+        TournamentFactory(owner=user, start_date="2026-07-10")
+        response = authenticated_client.get(LIST_CREATE_URL, {"start_date": "2026-06-01"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 2
+        for t in response.data["results"]:
+            assert t["start_date"] >= "2026-06-01"
+
+    def test_filter_by_end_date_upper_bound(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?end_date=2026-06-30 returns tournaments whose start_date <= 2026-06-30."""
+        TournamentFactory(owner=user, start_date="2026-05-15")
+        TournamentFactory(owner=user, start_date="2026-06-30")
+        TournamentFactory(owner=user, start_date="2026-07-10")
+        response = authenticated_client.get(LIST_CREATE_URL, {"end_date": "2026-06-30"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 2
+        for t in response.data["results"]:
+            assert t["start_date"] <= "2026-06-30"
+
+    def test_filter_by_start_date_and_end_date_range(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?start_date=2026-06-01&end_date=2026-06-30 returns tournaments in that range."""
+        TournamentFactory(owner=user, start_date="2026-05-15")
+        TournamentFactory(owner=user, start_date="2026-06-10")
+        TournamentFactory(owner=user, start_date="2026-06-30")
+        TournamentFactory(owner=user, start_date="2026-07-01")
+        response = authenticated_client.get(
+            LIST_CREATE_URL, {"start_date": "2026-06-01", "end_date": "2026-06-30"}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 2
+        for t in response.data["results"]:
+            assert "2026-06-01" <= t["start_date"] <= "2026-06-30"
+
+    def test_filter_combined_category_and_gender(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?category=P100&gender=Homme returns only P100 male tournaments."""
+        TournamentFactory(owner=user, category=Tournament.Category.P100, gender=Tournament.Gender.MALE)
+        TournamentFactory(owner=user, category=Tournament.Category.P100, gender=Tournament.Gender.FEMALE)
+        TournamentFactory(owner=user, category=Tournament.Category.P250, gender=Tournament.Gender.MALE)
+        response = authenticated_client.get(
+            LIST_CREATE_URL, {"category": "P100", "gender": "Homme"}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 1
+        assert response.data["results"][0]["category"] == "P100"
+        assert response.data["results"][0]["gender"] == "Homme"
+
+    def test_filters_only_apply_to_own_tournaments(
+        self, authenticated_client: APIClient, user, other_user
+    ) -> None:
+        """Filters must never expose another user's tournaments."""
+        TournamentFactory(owner=user, category=Tournament.Category.P100)
+        TournamentFactory(owner=other_user, category=Tournament.Category.P100)
+        response = authenticated_client.get(LIST_CREATE_URL, {"category": "P100"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 1
+
+    def test_filter_no_params_returns_all_own_tournaments(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """No filter params → same behaviour as before (all own tournaments)."""
+        TournamentFactory.create_batch(4, owner=user)
+        response = authenticated_client.get(LIST_CREATE_URL)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 4
 
 
 @pytest.mark.django_db

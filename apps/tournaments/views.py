@@ -1,7 +1,8 @@
 from typing import Any
 
 from django.db.models import TextChoices
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -57,18 +58,48 @@ class TournamentGenderEnumView(APIView):
         return Response(enum_to_value_label(Tournament.Gender))
 
 
-class TournamentListCreateView(generics.ListCreateAPIView):
-    """List the authenticated user's tournaments or create a new one.
+_TOURNAMENT_LIST_FILTERS = [
+    OpenApiParameter(
+        name="category",
+        type=OpenApiTypes.STR,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="Filtrer par catégorie (ex: P100, P250).",
+        enum=[c.value for c in Tournament.Category],
+    ),
+    OpenApiParameter(
+        name="gender",
+        type=OpenApiTypes.STR,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="Filtrer par genre (Homme, Femme, Mixte).",
+        enum=[c.value for c in Tournament.Gender],
+    ),
+    OpenApiParameter(
+        name="start_date",
+        type=OpenApiTypes.DATE,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="Borne inférieure sur la date de début (inclusive, format ISO 8601).",
+    ),
+    OpenApiParameter(
+        name="end_date",
+        type=OpenApiTypes.DATE,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="Borne supérieure sur la date de début (inclusive, format ISO 8601).",
+    ),
+]
 
-    Supported query parameters:
-    - ``category``: filter by exact category value (e.g. ``P100``)
-    - ``gender``: filter by exact gender value (e.g. ``Homme``)
-    - ``start_date``: lower bound (inclusive) on ``Tournament.start_date`` — ISO 8601 date
-    - ``end_date``: upper bound (inclusive) on ``Tournament.start_date`` — ISO 8601 date
-    """
+
+@extend_schema(parameters=_TOURNAMENT_LIST_FILTERS)
+class TournamentListCreateView(generics.ListCreateAPIView):
+    """List the authenticated user's tournaments or create a new one."""
 
     serializer_class = TournamentSerializer
     permission_classes = [IsAuthenticated]
+    ordering_fields = ["name", "start_date", "end_date", "created_at"]
+    ordering = ["start_date"]
 
     def get_queryset(self):
         qs = Tournament.objects.filter(owner=self.request.user)

@@ -121,6 +121,38 @@ uv run python manage.py shell
 - Retourner des codes HTTP sémantiques (201 pour création, 204 pour suppression, etc.)
 - Pagination activée par défaut (20 items)
 
+### Pagination et tri standard
+
+La classe `StandardResultsPagination` (`apps/common/pagination.py`) est enregistrée comme `DEFAULT_PAGINATION_CLASS`. Tout endpoint qui hérite de `generics.ListAPIView` ou `ModelViewSet` l'utilise automatiquement — rien à faire.
+
+**Format de réponse paginée :**
+```json
+{
+  "count": 42,
+  "next": "https://…/api/v1/tournaments?page=3",
+  "previous": "https://…/api/v1/tournaments?page=1",
+  "results": []
+}
+```
+
+**Paramètres de pagination :**
+- `?page=N` — navigue à la page N
+- `?page_size=N` — override la taille de page (défaut : 20, max : 100)
+
+**Tri via `OrderingFilter` :**
+
+`OrderingFilter` est dans `DEFAULT_FILTER_BACKENDS` — il s'applique globalement. Pour activer le tri sur une view, déclarer `ordering_fields` et `ordering` (tri par défaut) :
+
+```python
+class TournamentListCreateView(generics.ListCreateAPIView):
+    ordering_fields = ["name", "start_date", "end_date", "created_at"]
+    ordering = ["start_date"]  # tri par défaut
+```
+
+- `?ordering=name` — tri ascendant par `name`
+- `?ordering=-start_date` — tri descendant par `start_date`
+- Les champs non listés dans `ordering_fields` sont silencieusement ignorés.
+
 ### Gestion des erreurs
 
 Toutes les erreurs API suivent un format unifié géré par `apps.common.exceptions.custom_exception_handler` (enregistré via `REST_FRAMEWORK["EXCEPTION_HANDLER"]`).

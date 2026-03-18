@@ -570,6 +570,155 @@ class TestFilterTournaments:
         assert response.data["count"] == 4
 
 
+# ---------------------------------------------------------------------------
+# Ordering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestListTournamentsOrdering:
+    def test_list_tournaments_ordered_by_start_date_ascending(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """GET /tournaments/ returns tournaments sorted by start_date ascending by default."""
+        TournamentFactory(owner=user, start_date="2026-09-01")
+        TournamentFactory(owner=user, start_date="2026-03-15")
+        TournamentFactory(owner=user, start_date="2026-06-10")
+        response = authenticated_client.get(LIST_CREATE_URL)
+        assert response.status_code == status.HTTP_200_OK
+        dates = [t["start_date"] for t in response.data["results"]]
+        assert dates == sorted(dates)
+
+    def test_list_tournaments_most_recent_start_date_last(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """The tournament with the latest start_date appears last in the list."""
+        latest = TournamentFactory(owner=user, start_date="2026-12-31")
+        TournamentFactory(owner=user, start_date="2026-01-01")
+        TournamentFactory(owner=user, start_date="2026-06-15")
+        response = authenticated_client.get(LIST_CREATE_URL)
+        assert response.status_code == status.HTTP_200_OK
+        last_result = response.data["results"][-1]
+        assert last_result["id"] == latest.pk
+
+    def test_ordering_by_start_date_descending(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?ordering=-start_date returns tournaments with the most recent start_date first."""
+        TournamentFactory(owner=user, start_date="2026-03-01")
+        TournamentFactory(owner=user, start_date="2026-09-01")
+        TournamentFactory(owner=user, start_date="2026-06-01")
+        response = authenticated_client.get(LIST_CREATE_URL, {"ordering": "-start_date"})
+        assert response.status_code == status.HTTP_200_OK
+        dates = [t["start_date"] for t in response.data["results"]]
+        assert dates == sorted(dates, reverse=True)
+
+    def test_ordering_by_name_ascending(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?ordering=name returns tournaments sorted alphabetically by name."""
+        TournamentFactory(owner=user, name="Zeta Cup", start_date="2026-06-01")
+        TournamentFactory(owner=user, name="Alpha Open", start_date="2026-06-01")
+        TournamentFactory(owner=user, name="Metro Classic", start_date="2026-06-01")
+        response = authenticated_client.get(LIST_CREATE_URL, {"ordering": "name"})
+        assert response.status_code == status.HTTP_200_OK
+        names = [t["name"] for t in response.data["results"]]
+        assert names == sorted(names)
+
+    def test_ordering_by_name_descending(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?ordering=-name returns tournaments sorted reverse-alphabetically."""
+        TournamentFactory(owner=user, name="Zeta Cup", start_date="2026-06-01")
+        TournamentFactory(owner=user, name="Alpha Open", start_date="2026-06-01")
+        TournamentFactory(owner=user, name="Metro Classic", start_date="2026-06-01")
+        response = authenticated_client.get(LIST_CREATE_URL, {"ordering": "-name"})
+        assert response.status_code == status.HTTP_200_OK
+        names = [t["name"] for t in response.data["results"]]
+        assert names == sorted(names, reverse=True)
+
+    def test_ordering_by_created_at_descending(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?ordering=-created_at returns newest-created tournaments first."""
+        t1 = TournamentFactory(owner=user, start_date="2026-06-01")
+        t2 = TournamentFactory(owner=user, start_date="2026-06-02")
+        t3 = TournamentFactory(owner=user, start_date="2026-06-03")
+        response = authenticated_client.get(LIST_CREATE_URL, {"ordering": "-created_at"})
+        assert response.status_code == status.HTTP_200_OK
+        ids = [t["id"] for t in response.data["results"]]
+        # Created in order t1, t2, t3 — descending means t3, t2, t1
+        assert ids == [t3.pk, t2.pk, t1.pk]
+
+    def test_ordering_invalid_field_ignored(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?ordering=nonexistent_field is silently ignored (falls back to default order)."""
+        TournamentFactory.create_batch(3, owner=user)
+        response = authenticated_client.get(LIST_CREATE_URL, {"ordering": "nonexistent_field"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Page size
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestListTournamentsPageSize:
+    def test_page_size_limits_results(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?page_size=2 returns at most 2 results per page."""
+        TournamentFactory.create_batch(5, owner=user)
+        response = authenticated_client.get(LIST_CREATE_URL, {"page_size": 2})
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["results"]) == 2
+        assert response.data["count"] == 5
+        assert response.data["next"] is not None
+
+    def test_page_size_one_returns_single_result(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?page_size=1 returns exactly 1 result."""
+        TournamentFactory.create_batch(3, owner=user)
+        response = authenticated_client.get(LIST_CREATE_URL, {"page_size": 1})
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["results"]) == 1
+
+    def test_page_size_larger_than_total_returns_all(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?page_size=100 with 3 tournaments returns all 3, no next page."""
+        TournamentFactory.create_batch(3, owner=user)
+        response = authenticated_client.get(LIST_CREATE_URL, {"page_size": 100})
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["results"]) == 3
+        assert response.data["next"] is None
+
+    def test_page_size_above_max_is_capped(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?page_size=200 is capped to max_page_size (100) — returns at most 100 results."""
+        TournamentFactory.create_batch(5, owner=user)
+        response = authenticated_client.get(LIST_CREATE_URL, {"page_size": 200})
+        assert response.status_code == status.HTTP_200_OK
+        # Capped — no error, response is valid, results <= max_page_size
+        assert len(response.data["results"]) <= 100
+
+    def test_default_page_size_is_20(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """Without ?page_size, the default page size is 20."""
+        TournamentFactory.create_batch(25, owner=user)
+        response = authenticated_client.get(LIST_CREATE_URL)
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["results"]) == 20
+        assert response.data["count"] == 25
+        assert response.data["next"] is not None
+
+
 @pytest.mark.django_db
 class TestLastLeague:
     def test_last_league_unauthenticated_returns_401(self, api_client: APIClient) -> None:

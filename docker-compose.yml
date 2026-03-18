@@ -55,6 +55,7 @@ services:
     volumes:
       - ./apps:/app/apps     # hot reload — source code only
       - ./config:/app/config # hot reload — django config
+      - ./input_pdf:/app/input_pdf # utiles pour récupérer les PDF des classements
       - uv_cache:/root/.cache/uv
     ports:
       - "8000:8000"

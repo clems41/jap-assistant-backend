@@ -1,0 +1,188 @@
+import csv
+import functools
+import io
+
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import generics, status
+from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import MultiPartParser
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.tournaments.models import Tournament
+
+from .models import Pair, Player
+from .serializers import PairCSVImportSerializer, PairSerializer
+
+EXPECTED_HEADERS = [
+    "last_name",
+    "first_name",
+    "license_number",
+    "phone",
+    "ranking",
+    "last_name2",
+    "first_name2",
+    "license_number2",
+    "phone2",
+    "ranking2",
+    "weight",
+]
+
+
+class TournamentScopedMixin:
+    request: Request
+    kwargs: dict
+
+    @functools.cached_property
+    def _tournament(self) -> Tournament:
+        return get_object_or_404(
+            Tournament, pk=self.kwargs["tournament_id"], owner=self.request.user
+        )
+
+
+class PairListCreateView(TournamentScopedMixin, generics.ListCreateAPIView):
+    serializer_class = PairSerializer
+    permission_classes = [IsAuthenticated]
+    ordering_fields = ["id", "weight", "created_at"]
+    ordering = ["id"]
+
+    def get_queryset(self):
+        return Pair.objects.filter(tournament=self._tournament).select_related(
+            "player1", "player2"
+        )
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["tournament"] = self._tournament
+        return ctx
+
+    def perform_create(self, serializer):
+        serializer.save(tournament=self._tournament)
+
+
+class PairDetailView(TournamentScopedMixin, generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = PairSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Pair.objects.filter(tournament=self._tournament).select_related(
+            "player1", "player2"
+        )
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["tournament"] = self._tournament
+        return ctx
+
+
+class PairCSVImportView(TournamentScopedMixin, APIView):
+    parser_classes = [MultiPartParser]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=PairCSVImportSerializer,
+        responses={201: PairSerializer(many=True)},
+        parameters=[
+            OpenApiParameter(
+                name="tournament_id",
+                location=OpenApiParameter.PATH,
+                type=int,
+            ),
+        ],
+        summary="Import des paires depuis un fichier CSV",
+        description=(
+            "Importe les paires d'un tournoi depuis un fichier CSV. "
+            "Remplace toutes les paires existantes."
+        ),
+    )
+    def post(self, request: Request, tournament_id: int) -> Response:
+        tournament = self._tournament
+
+        file_serializer = PairCSVImportSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+
+        uploaded_file = file_serializer.validated_data["file"]
+        content = uploaded_file.read().decode("utf-8")
+        rows, error = self._parse_csv(content)
+        if error:
+            raise ValidationError({"file": [error]})
+
+        pairs = self._create_pairs_from_csv(tournament, rows)
+        output = PairSerializer(
+            pairs,
+            many=True,
+            context={"request": request, "tournament": tournament},
+        )
+        return Response(output.data, status=status.HTTP_201_CREATED)
+
+    def _parse_csv(self, content: str) -> tuple[list[dict], str | None]:
+        reader = csv.DictReader(io.StringIO(content))
+        headers = reader.fieldnames or []
+        if list(headers) != EXPECTED_HEADERS:
+            return [], f"En-têtes CSV invalides. Attendu : {', '.join(EXPECTED_HEADERS)}"
+
+        rows = []
+        seen_licenses: set[str] = set()
+
+        for i, row in enumerate(reader, start=2):  # row 1 = headers
+            for col in ["license_number", "license_number2"]:
+                lic = row.get(col, "").strip()
+                if not lic:
+                    return [], f"Ligne {i} : le numéro de licence est obligatoire."
+                if lic in seen_licenses:
+                    return (
+                        [],
+                        f"Ligne {i} : le numéro de licence '{lic}' est en doublon dans le fichier.",
+                    )
+                seen_licenses.add(lic)
+            rows.append(row)
+
+        return rows, None
+
+    def _create_pairs_from_csv(
+        self, tournament: Tournament, rows: list[dict]
+    ) -> list[Pair]:
+        with transaction.atomic():
+            Pair.objects.filter(tournament=tournament).delete()
+            pairs = []
+            for row in rows:
+                player1, _ = Player.objects.update_or_create(
+                    license_number=row["license_number"].strip(),
+                    defaults={
+                        "last_name": row["last_name"].strip(),
+                        "first_name": row["first_name"].strip(),
+                        "phone": row["phone"].strip(),
+                        "ranking": (
+                            int(row["ranking"])
+                            if row.get("ranking", "").strip()
+                            else None
+                        ),
+                    },
+                )
+                player2, _ = Player.objects.update_or_create(
+                    license_number=row["license_number2"].strip(),
+                    defaults={
+                        "last_name": row["last_name2"].strip(),
+                        "first_name": row["first_name2"].strip(),
+                        "phone": row["phone2"].strip(),
+                        "ranking": (
+                            int(row["ranking2"])
+                            if row.get("ranking2", "").strip()
+                            else None
+                        ),
+                    },
+                )
+                weight_str = row.get("weight", "").strip()
+                weight = float(weight_str) if weight_str else None
+                pair = Pair.objects.create(
+                    tournament=tournament,
+                    player1=player1,
+                    player2=player2,
+                    weight=weight,
+                )
+                pairs.append(pair)
+        return pairs

@@ -18,6 +18,7 @@ PAIR_DETAIL_URL = "/api/v1/tournaments/{tournament_id}/pairs/{pk}/"
 CSV_IMPORT_URL = "/api/v1/tournaments/{tournament_id}/pairs/import/"
 
 CSV_HEADERS = "last_name,first_name,license_number,phone,ranking,last_name2,first_name2,license_number2,phone2,ranking2,weight"
+CSV_HEADERS_FR = "Nom J1,Prénom J1,Licence J1,Téléphone J1,Nom J2,Prénom J2,Licence J2,Téléphone J2"
 
 
 def make_csv_content(*rows: dict) -> str:
@@ -36,6 +37,25 @@ def make_csv_content(*rows: dict) -> str:
                 row.get("phone2", "0677889900"),
                 row.get("ranking2", "310"),
                 row.get("weight", "560.0"),
+            ])
+        )
+    return "\n".join(lines)
+
+
+def make_csv_content_fr(*rows: dict) -> str:
+    """Build a CSV with French headers (real FFT export format, no ranking columns)."""
+    lines = [CSV_HEADERS_FR]
+    for row in rows:
+        lines.append(
+            ",".join([
+                row.get("last_name", "Martin"),
+                row.get("first_name", "Julien"),
+                row.get("license_number", "LIC0000001"),
+                row.get("phone", "0612345678"),
+                row.get("last_name2", "Roux"),
+                row.get("first_name2", "Quentin"),
+                row.get("license_number2", "LIC0000002"),
+                row.get("phone2", "0677889900"),
             ])
         )
     return "\n".join(lines)
@@ -573,4 +593,56 @@ class TestCSVImport:
         f = make_csv_file(content)
         response = auth_client.post(csv_import_url(other_tournament.id), data={"file": f}, format="multipart")
         assert response.status_code == 404
+
+    def test_csv_import_french_headers_success(self, auth_client, tournament):
+        """CSV with French headers (real FFT export format) must be accepted."""
+        content = make_csv_content_fr(
+            {"license_number": "FRLIC001", "license_number2": "FRLIC002"},
+        )
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 201
+        assert len(response.data) == 1
+
+    def test_csv_import_french_headers_creates_players(self, auth_client, tournament):
+        """Players must be created from a CSV with French headers."""
+        from apps.players.models import Player
+        content = make_csv_content_fr(
+            {"license_number": "FRLIC003", "license_number2": "FRLIC004"},
+        )
+        f = make_csv_file(content)
+        auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert Player.objects.filter(license_number="FRLIC003").exists()
+        assert Player.objects.filter(license_number="FRLIC004").exists()
+
+    def test_csv_import_french_headers_ranking_is_none(self, auth_client, tournament):
+        """When importing French format (no ranking columns), player ranking must be None."""
+        from apps.players.models import Player
+        content = make_csv_content_fr(
+            {"license_number": "FRANKING001", "license_number2": "FRANKING002"},
+        )
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 201
+        p1 = Player.objects.get(license_number="FRANKING001")
+        p2 = Player.objects.get(license_number="FRANKING002")
+        assert p1.ranking is None
+        assert p2.ranking is None
+
+    def test_csv_import_french_headers_missing_license(self, auth_client, tournament):
+        """Missing license in French format must return 400."""
+        content = CSV_HEADERS_FR + "\nMartin,Julien,,0612345678,Roux,Quentin,FRLIC006,0677889900"
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 400
+
+    def test_csv_import_french_headers_duplicate_license(self, auth_client, tournament):
+        """Duplicate license numbers in French format must return 400."""
+        content = make_csv_content_fr(
+            {"license_number": "FDUP001", "license_number2": "FDUP002"},
+            {"license_number": "FDUP001", "license_number2": "FDUP003"},
+        )
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 400
 

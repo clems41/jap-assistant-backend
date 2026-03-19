@@ -4,6 +4,38 @@ from apps.common.models import TimeStampedModel
 from apps.tournaments.models import Tournament
 
 
+class FFTRanking(TimeStampedModel):
+    last_name = models.CharField(max_length=100)
+    first_name = models.CharField(max_length=100)
+    league = models.CharField(
+        max_length=50, choices=Tournament.League.choices, blank=True
+    )
+    ranking = models.PositiveIntegerField()
+    points = models.FloatField(null=True, blank=True)
+    gender = models.CharField(max_length=10, choices=Tournament.Gender.choices)
+    source_filename = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["last_name", "first_name", "gender"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.last_name} {self.first_name} ({self.gender}, #{self.ranking})"
+
+
+class FFTRankingMeta(TimeStampedModel):
+    gender = models.CharField(
+        max_length=10, unique=True, choices=Tournament.Gender.choices
+    )
+    last_imported_at = models.DateTimeField()
+    source_filename = models.CharField(max_length=255)
+    entry_count = models.IntegerField(default=0)
+
+    def __str__(self) -> str:
+        return f"FFTRankingMeta({self.gender}, {self.last_imported_at})"
+
+
 class Player(TimeStampedModel):
     last_name = models.CharField(max_length=100)
     first_name = models.CharField(max_length=100)

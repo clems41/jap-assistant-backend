@@ -247,3 +247,11 @@ CORS_ALLOWED_ORIGINS=<https://frontend.com>
 ```
 
 Le serveur de production utilise **Gunicorn + Uvicorn workers** pour supporter à la fois les requêtes HTTP et les WebSockets.
+
+## Mise à jour des classements
+
+```bash
+ docker compose exec api uv run python manage.py import_fft_rankings \
+   --men input_pdf/classement_padel_france_homme_2026_03_mars.pdf \
+   --women input_pdf/classement_padel_france_femme_2026_03_mars.pdf
+```

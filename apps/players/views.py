@@ -32,6 +32,30 @@ EXPECTED_HEADERS = [
     "weight",
 ]
 
+# French headers from the real FFT CSV export (no ranking columns)
+EXPECTED_HEADERS_FR = [
+    "Nom J1",
+    "Prénom J1",
+    "Licence J1",
+    "Téléphone J1",
+    "Nom J2",
+    "Prénom J2",
+    "Licence J2",
+    "Téléphone J2",
+]
+
+# Mapping from French headers to internal field names
+FRENCH_HEADER_MAP: dict[str, str] = {
+    "Nom J1": "last_name",
+    "Prénom J1": "first_name",
+    "Licence J1": "license_number",
+    "Téléphone J1": "phone",
+    "Nom J2": "last_name2",
+    "Prénom J2": "first_name2",
+    "Licence J2": "license_number2",
+    "Téléphone J2": "phone2",
+}
+
 
 class TournamentScopedMixin:
     request: Request
@@ -121,14 +145,22 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
 
     def _parse_csv(self, content: str) -> tuple[list[dict], str | None]:
         reader = csv.DictReader(io.StringIO(content))
-        headers = reader.fieldnames or []
-        if list(headers) != EXPECTED_HEADERS:
+        headers = list(reader.fieldnames or [])
+
+        if headers == EXPECTED_HEADERS:
+            normalize = None
+        elif headers == EXPECTED_HEADERS_FR:
+            normalize = FRENCH_HEADER_MAP
+        else:
             return [], f"En-têtes CSV invalides. Attendu : {', '.join(EXPECTED_HEADERS)}"
 
         rows = []
         seen_licenses: set[str] = set()
 
         for i, row in enumerate(reader, start=2):  # row 1 = headers
+            if normalize is not None:
+                row = {normalize.get(k, k): v for k, v in row.items()}
+
             for col in ["license_number", "license_number2"]:
                 lic = row.get(col, "").strip()
                 if not lic:

@@ -138,7 +138,8 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
         if error:
             raise ValidationError({"file": [error]})
 
-        pairs = self._create_pairs_from_csv(tournament, rows)
+        self._create_pairs_from_csv(tournament, rows)
+        pairs = match_and_update_rankings(tournament)
         output = PairSerializer(
             pairs,
             many=True,

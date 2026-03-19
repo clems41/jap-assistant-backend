@@ -754,7 +754,6 @@ class TestCSVImport:
 
     def test_csv_import_french_headers_preserves_existing_pair_weight(self, auth_client, tournament):
         """French-format CSV (no weight column) must NOT overwrite an existing pair's weight."""
-        from apps.players.models import Pair
         from apps.players.tests.factories import PairFactory, PlayerFactory
 
         player1 = PlayerFactory(license_number="WPRES_FR_LIC001", ranking=100)
@@ -785,7 +784,6 @@ class TestCSVImport:
         self, auth_client, tournament
     ):
         """English-format CSV with an empty weight cell must NOT overwrite an existing pair's weight."""
-        from apps.players.models import Pair
         from apps.players.tests.factories import PairFactory, PlayerFactory
 
         player1 = PlayerFactory(license_number="WPRES_EN_LIC001", ranking=100)
@@ -813,5 +811,244 @@ class TestCSVImport:
         existing_pair.refresh_from_db()
         assert existing_pair.weight == 150.0, (
             "weight must not be overwritten to None when the CSV weight cell is empty"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestCSVImportAutoFFTMatching
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestCSVImportAutoFFTMatching:
+    """After a CSV import, FFT ranking matching is automatically triggered.
+
+    Rules:
+    - player.ranking is set from FFTRanking if it was None before import
+    - player.ranking is NOT overwritten if already set
+    - pair.weight is computed if both players have rankings AND pair.weight is None
+    - pair.weight is NOT overwritten if already set
+    """
+
+    def _make_tournament(self, user, gender=None, league=None):
+        from apps.tournaments.models import Tournament
+        from apps.tournaments.tests.factories import TournamentFactory
+        return TournamentFactory(
+            owner=user,
+            gender=gender or Tournament.Gender.MALE,
+            league=league or Tournament.League.ILE_DE_FRANCE,
+        )
+
+    def test_csv_import_auto_matches_fft_ranking_for_player_without_ranking(
+        self, auth_client, user
+    ):
+        """
+        After importing a French-format CSV (no ranking columns), if a player
+        has no ranking and a FFTRanking match exists, ranking and weight are set.
+        """
+        from apps.players.models import Player
+        from apps.players.tests.factories import FFTRankingFactory
+        from apps.tournaments.models import Tournament
+
+        tournament = self._make_tournament(user)
+
+        FFTRankingFactory(
+            last_name="Dupont",
+            first_name="Alice",
+            ranking=120,
+            gender=Tournament.Gender.MALE,
+            league=Tournament.League.ILE_DE_FRANCE,
+        )
+        FFTRankingFactory(
+            last_name="Bernard",
+            first_name="Bob",
+            ranking=180,
+            gender=Tournament.Gender.MALE,
+            league=Tournament.League.ILE_DE_FRANCE,
+        )
+
+        content = make_csv_content_fr({
+            "last_name": "Dupont",
+            "first_name": "Alice",
+            "license_number": "AUTOFFT001",
+            "phone": "",
+            "last_name2": "Bernard",
+            "first_name2": "Bob",
+            "license_number2": "AUTOFFT002",
+            "phone2": "",
+        })
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+
+        assert response.status_code == 201
+        p1 = Player.objects.get(license_number="AUTOFFT001")
+        p2 = Player.objects.get(license_number="AUTOFFT002")
+        assert p1.ranking == 120, "ranking must be set from FFT matching after CSV import"
+        assert p2.ranking == 180, "ranking must be set from FFT matching after CSV import"
+        assert response.data[0]["weight"] == 300.0
+
+    def test_csv_import_auto_matching_does_not_overwrite_existing_ranking(
+        self, auth_client, user
+    ):
+        """
+        After CSV import, FFT matching must NOT overwrite a ranking that was
+        already present on the player before the import.
+        """
+        from apps.players.models import Player
+        from apps.players.tests.factories import FFTRankingFactory
+        from apps.tournaments.models import Tournament
+
+        tournament = self._make_tournament(user)
+
+        Player.objects.create(
+            last_name="Leroy",
+            first_name="Paul",
+            license_number="NOOVERWRITE001",
+            phone="",
+            ranking=50,
+        )
+        Player.objects.create(
+            last_name="Simon",
+            first_name="Jean",
+            license_number="NOOVERWRITE002",
+            phone="",
+            ranking=75,
+        )
+        # FFT has different values — must NOT be used
+        FFTRankingFactory(
+            last_name="Leroy",
+            first_name="Paul",
+            ranking=999,
+            gender=Tournament.Gender.MALE,
+        )
+        FFTRankingFactory(
+            last_name="Simon",
+            first_name="Jean",
+            ranking=888,
+            gender=Tournament.Gender.MALE,
+        )
+
+        content = make_csv_content_fr({
+            "last_name": "Leroy",
+            "first_name": "Paul",
+            "license_number": "NOOVERWRITE001",
+            "phone": "",
+            "last_name2": "Simon",
+            "first_name2": "Jean",
+            "license_number2": "NOOVERWRITE002",
+            "phone2": "",
+        })
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+
+        assert response.status_code == 201
+        p1 = Player.objects.get(license_number="NOOVERWRITE001")
+        p2 = Player.objects.get(license_number="NOOVERWRITE002")
+        assert p1.ranking == 50, "existing ranking must not be overwritten by FFT matching"
+        assert p2.ranking == 75, "existing ranking must not be overwritten by FFT matching"
+
+    def test_csv_import_auto_matching_does_not_overwrite_existing_pair_weight(
+        self, auth_client, user
+    ):
+        """
+        After CSV import, FFT matching must NOT overwrite a pair weight
+        that was already set before the import.
+        """
+        from apps.players.tests.factories import (
+            FFTRankingFactory,
+            PairFactory,
+            PlayerFactory,
+        )
+        from apps.tournaments.models import Tournament
+
+        tournament = self._make_tournament(user)
+
+        player1 = PlayerFactory(license_number="WPRESFFT001", ranking=None)
+        player2 = PlayerFactory(license_number="WPRESFFT002", ranking=None)
+        existing_pair = PairFactory(
+            tournament=tournament, player1=player1, player2=player2, weight=777.0
+        )
+
+        FFTRankingFactory(
+            last_name=player1.last_name,
+            first_name=player1.first_name,
+            ranking=100,
+            gender=Tournament.Gender.MALE,
+        )
+        FFTRankingFactory(
+            last_name=player2.last_name,
+            first_name=player2.first_name,
+            ranking=200,
+            gender=Tournament.Gender.MALE,
+        )
+
+        content = make_csv_content_fr({
+            "last_name": player1.last_name,
+            "first_name": player1.first_name,
+            "license_number": "WPRESFFT001",
+            "phone": player1.phone,
+            "last_name2": player2.last_name,
+            "first_name2": player2.first_name,
+            "license_number2": "WPRESFFT002",
+            "phone2": player2.phone,
+        })
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+
+        assert response.status_code == 201
+        existing_pair.refresh_from_db()
+        assert existing_pair.weight == 777.0, (
+            "pair weight must not be overwritten by FFT matching when already set"
+        )
+
+    def test_csv_import_auto_matching_computes_weight_when_pair_weight_is_none(
+        self, auth_client, user
+    ):
+        """
+        After CSV import with French headers (no weight column), if both players
+        are matched via FFT and the pair has no weight, weight must be computed.
+        """
+        from apps.players.models import Pair
+        from apps.players.tests.factories import FFTRankingFactory
+        from apps.tournaments.models import Tournament
+
+        tournament = self._make_tournament(user)
+
+        FFTRankingFactory(
+            last_name="Girard",
+            first_name="Marc",
+            ranking=150,
+            gender=Tournament.Gender.MALE,
+            league=Tournament.League.ILE_DE_FRANCE,
+        )
+        FFTRankingFactory(
+            last_name="Petit",
+            first_name="Luc",
+            ranking=250,
+            gender=Tournament.Gender.MALE,
+            league=Tournament.League.ILE_DE_FRANCE,
+        )
+
+        content = make_csv_content_fr({
+            "last_name": "Girard",
+            "first_name": "Marc",
+            "license_number": "WCOMPUTE001",
+            "phone": "",
+            "last_name2": "Petit",
+            "first_name2": "Luc",
+            "license_number2": "WCOMPUTE002",
+            "phone2": "",
+        })
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+
+        assert response.status_code == 201
+        pair = Pair.objects.get(
+            tournament=tournament,
+            player1__license_number="WCOMPUTE001",
+            player2__license_number="WCOMPUTE002",
+        )
+        assert pair.weight == 400.0, (
+            "weight must be computed from FFT-matched rankings when pair.weight is None"
         )
 

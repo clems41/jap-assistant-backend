@@ -61,7 +61,11 @@ def match_and_update_rankings(tournament: Tournament) -> list[Pair]:
 
     pairs_to_save: list[Pair] = []
     for pair in pairs:
-        if pair.player1.ranking is not None and pair.player2.ranking is not None:
+        if (
+            pair.weight is None
+            and pair.player1.ranking is not None
+            and pair.player2.ranking is not None
+        ):
             pair.weight = pair.player1.ranking + pair.player2.ranking
             pairs_to_save.append(pair)
 

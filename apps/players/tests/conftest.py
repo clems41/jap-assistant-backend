@@ -4,7 +4,6 @@ import os
 import pytest
 from fpdf import FPDF
 
-
 # ---------------------------------------------------------------------------
 # Paths to the real FFT ranking PDFs (mounted into the container via docker)
 # ---------------------------------------------------------------------------

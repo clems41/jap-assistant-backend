@@ -2,7 +2,6 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.players.models import Pair, Player
 from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
@@ -383,6 +382,50 @@ def test_missing_accent_in_first_name_matches(client, tournament):
 
     player.refresh_from_db()
     assert player.ranking == 88
+
+
+# ---------------------------------------------------------------------------
+# Format de réponse
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Non-écrasement du poids existant
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_existing_weight_not_overwritten_by_matching(client, tournament):
+    """
+    When a pair already has a weight set, match_and_update_rankings must NOT
+    overwrite it — even if both players have rankings.
+    """
+    player1 = PlayerFactory(ranking=100)
+    player2 = PlayerFactory(ranking=200)
+    pair = PairFactory(tournament=tournament, player1=player1, player2=player2, weight=999.0)
+
+    client.get(url(tournament.pk))
+
+    pair.refresh_from_db()
+    assert pair.weight == 999.0
+
+
+@pytest.mark.django_db
+def test_weight_computed_when_pair_weight_is_none_and_players_already_ranked(
+    client, tournament
+):
+    """
+    When a pair has weight=None and both players already have rankings
+    (not from FFT matching), weight must be computed.
+    """
+    player1 = PlayerFactory(ranking=100)
+    player2 = PlayerFactory(ranking=200)
+    pair = PairFactory(tournament=tournament, player1=player1, player2=player2, weight=None)
+
+    client.get(url(tournament.pk))
+
+    pair.refresh_from_db()
+    assert pair.weight == 300.0
 
 
 # ---------------------------------------------------------------------------

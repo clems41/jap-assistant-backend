@@ -13,7 +13,6 @@ from apps.players.services.pdf_parser_service import (
     parse_fft_pdf,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shared fixture: parse the men's PDF once per test session
 # ---------------------------------------------------------------------------

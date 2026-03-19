@@ -1,6 +1,11 @@
 from django.urls import path
 
-from .views import PairCSVImportView, PairDetailView, PairListCreateView, RankingMatchingView
+from .views import (
+    PairCSVImportView,
+    PairDetailView,
+    PairListCreateView,
+    RankingMatchingView,
+)
 
 urlpatterns = [
     path("import/", PairCSVImportView.as_view(), name="pair-csv-import"),

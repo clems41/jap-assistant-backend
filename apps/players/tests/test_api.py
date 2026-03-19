@@ -131,7 +131,16 @@ class TestListPairs:
     def test_list_pairs_success(self, auth_client, tournament, pair):
         response = auth_client.get(pairs_url(tournament.id))
         assert response.status_code == 200
-        assert response.data["count"] == 1
+        assert len(response.data) == 1
+
+    def test_list_pairs_returns_flat_list_not_paginated(self, auth_client, tournament, pair):
+        response = auth_client.get(pairs_url(tournament.id))
+        assert response.status_code == 200
+        assert isinstance(response.data, list)
+        assert "count" not in response.data
+        assert "next" not in response.data
+        assert "previous" not in response.data
+        assert "results" not in response.data
 
     def test_list_pairs_only_shows_own_tournament(self, auth_client, other_tournament):
         response = auth_client.get(pairs_url(other_tournament.id))
@@ -145,20 +154,12 @@ class TestListPairs:
 
         response = auth_client.get(pairs_url(tournament.id))
         assert response.status_code == 200
-        assert response.data["count"] == 1
-
-    def test_list_pairs_pagination(self, auth_client, tournament, pair):
-        response = auth_client.get(pairs_url(tournament.id))
-        assert response.status_code == 200
-        assert "count" in response.data
-        assert "next" in response.data
-        assert "previous" in response.data
-        assert "results" in response.data
+        assert len(response.data) == 1
 
     def test_list_pairs_empty(self, auth_client, tournament):
         response = auth_client.get(pairs_url(tournament.id))
         assert response.status_code == 200
-        assert response.data["results"] == []
+        assert response.data == []
 
 
 # ---------------------------------------------------------------------------
@@ -558,42 +559,3 @@ class TestCSVImport:
         response = auth_client.post(csv_import_url(other_tournament.id), data={"file": f}, format="multipart")
         assert response.status_code == 404
 
-
-# ---------------------------------------------------------------------------
-# TestPairOrdering
-# ---------------------------------------------------------------------------
-
-@pytest.mark.django_db
-class TestPairOrdering:
-    def test_pair_default_ordering_by_id(self, auth_client, tournament):
-        from apps.players.tests.factories import PairFactory
-        PairFactory(tournament=tournament, weight=300.0)
-        PairFactory(tournament=tournament, weight=100.0)
-        PairFactory(tournament=tournament, weight=200.0)
-
-        response = auth_client.get(pairs_url(tournament.id))
-        assert response.status_code == 200
-        ids = [item["id"] for item in response.data["results"]]
-        assert ids == sorted(ids)
-
-    def test_pair_ordering_by_weight_asc(self, auth_client, tournament):
-        from apps.players.tests.factories import PairFactory
-        PairFactory(tournament=tournament, weight=300.0)
-        PairFactory(tournament=tournament, weight=100.0)
-        PairFactory(tournament=tournament, weight=200.0)
-
-        response = auth_client.get(pairs_url(tournament.id) + "?ordering=weight")
-        assert response.status_code == 200
-        weights = [item["weight"] for item in response.data["results"]]
-        assert weights == sorted(weights)
-
-    def test_pair_ordering_by_weight_desc(self, auth_client, tournament):
-        from apps.players.tests.factories import PairFactory
-        PairFactory(tournament=tournament, weight=300.0)
-        PairFactory(tournament=tournament, weight=100.0)
-        PairFactory(tournament=tournament, weight=200.0)
-
-        response = auth_client.get(pairs_url(tournament.id) + "?ordering=-weight")
-        assert response.status_code == 200
-        weights = [item["weight"] for item in response.data["results"]]
-        assert weights == sorted(weights, reverse=True)

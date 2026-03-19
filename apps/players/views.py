@@ -47,8 +47,8 @@ class TournamentScopedMixin:
 class PairListCreateView(TournamentScopedMixin, generics.ListCreateAPIView):
     serializer_class = PairSerializer
     permission_classes = [IsAuthenticated]
-    ordering_fields = ["id", "weight", "created_at"]
-    ordering = ["id"]
+    pagination_class = None
+    filter_backends = []
 
     def get_queryset(self):
         return Pair.objects.filter(tournament=self._tournament).select_related(

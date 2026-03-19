@@ -679,3 +679,139 @@ class TestCSVImport:
         response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
         assert response.status_code == 400
 
+    def test_csv_import_french_headers_preserves_existing_ranking(self, auth_client, tournament):
+        """French-format CSV (no ranking columns) must NOT overwrite an existing player's ranking."""
+        from apps.players.models import Player
+        Player.objects.create(
+            last_name="Martin",
+            first_name="Julien",
+            license_number="RANKPRESERVE001",
+            phone="0612345678",
+            ranking=150,
+        )
+        Player.objects.create(
+            last_name="Roux",
+            first_name="Quentin",
+            license_number="RANKPRESERVE002",
+            phone="0677889900",
+            ranking=200,
+        )
+        content = make_csv_content_fr({
+            "last_name": "Martin",
+            "first_name": "Julien",
+            "license_number": "RANKPRESERVE001",
+            "phone": "0612345678",
+            "last_name2": "Roux",
+            "first_name2": "Quentin",
+            "license_number2": "RANKPRESERVE002",
+            "phone2": "0677889900",
+        })
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 201
+        p1 = Player.objects.get(license_number="RANKPRESERVE001")
+        p2 = Player.objects.get(license_number="RANKPRESERVE002")
+        assert p1.ranking == 150, "ranking must not be overwritten to None by a French-format import"
+        assert p2.ranking == 200, "ranking must not be overwritten to None by a French-format import"
+
+    def test_csv_import_english_headers_empty_ranking_preserves_existing(self, auth_client, tournament):
+        """English-format CSV with empty ranking cells must NOT overwrite an existing player's ranking."""
+        from apps.players.models import Player
+        Player.objects.create(
+            last_name="Dupont",
+            first_name="Alice",
+            license_number="RANKPRESERVE003",
+            phone="",
+            ranking=300,
+        )
+        Player.objects.create(
+            last_name="Bernard",
+            first_name="Bob",
+            license_number="RANKPRESERVE004",
+            phone="",
+            ranking=400,
+        )
+        content = make_csv_content({
+            "last_name": "Dupont",
+            "first_name": "Alice",
+            "license_number": "RANKPRESERVE003",
+            "phone": "",
+            "ranking": "",  # explicitly empty
+            "last_name2": "Bernard",
+            "first_name2": "Bob",
+            "license_number2": "RANKPRESERVE004",
+            "phone2": "",
+            "ranking2": "",  # explicitly empty
+            "weight": "",
+        })
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 201
+        p1 = Player.objects.get(license_number="RANKPRESERVE003")
+        p2 = Player.objects.get(license_number="RANKPRESERVE004")
+        assert p1.ranking == 300, "ranking must not be overwritten to None by an empty ranking cell"
+        assert p2.ranking == 400, "ranking must not be overwritten to None by an empty ranking cell"
+
+    def test_csv_import_french_headers_preserves_existing_pair_weight(self, auth_client, tournament):
+        """French-format CSV (no weight column) must NOT overwrite an existing pair's weight."""
+        from apps.players.models import Pair
+        from apps.players.tests.factories import PairFactory, PlayerFactory
+
+        player1 = PlayerFactory(license_number="WPRES_FR_LIC001", ranking=100)
+        player2 = PlayerFactory(license_number="WPRES_FR_LIC002", ranking=200)
+        existing_pair = PairFactory(
+            tournament=tournament, player1=player1, player2=player2, weight=150.0
+        )
+
+        content = make_csv_content_fr({
+            "last_name": player1.last_name,
+            "first_name": player1.first_name,
+            "license_number": "WPRES_FR_LIC001",
+            "phone": player1.phone,
+            "last_name2": player2.last_name,
+            "first_name2": player2.first_name,
+            "license_number2": "WPRES_FR_LIC002",
+            "phone2": player2.phone,
+        })
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 201
+        existing_pair.refresh_from_db()
+        assert existing_pair.weight == 150.0, (
+            "weight must not be overwritten to None when the CSV has no weight column"
+        )
+
+    def test_csv_import_english_headers_empty_weight_preserves_existing_pair_weight(
+        self, auth_client, tournament
+    ):
+        """English-format CSV with an empty weight cell must NOT overwrite an existing pair's weight."""
+        from apps.players.models import Pair
+        from apps.players.tests.factories import PairFactory, PlayerFactory
+
+        player1 = PlayerFactory(license_number="WPRES_EN_LIC001", ranking=100)
+        player2 = PlayerFactory(license_number="WPRES_EN_LIC002", ranking=200)
+        existing_pair = PairFactory(
+            tournament=tournament, player1=player1, player2=player2, weight=150.0
+        )
+
+        content = make_csv_content({
+            "last_name": player1.last_name,
+            "first_name": player1.first_name,
+            "license_number": "WPRES_EN_LIC001",
+            "phone": player1.phone,
+            "ranking": "100",
+            "last_name2": player2.last_name,
+            "first_name2": player2.first_name,
+            "license_number2": "WPRES_EN_LIC002",
+            "phone2": player2.phone,
+            "ranking2": "200",
+            "weight": "",  # explicitly empty
+        })
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 201
+        existing_pair.refresh_from_db()
+        assert existing_pair.weight == 150.0, (
+            "weight must not be overwritten to None when the CSV weight cell is empty"
+        )
+

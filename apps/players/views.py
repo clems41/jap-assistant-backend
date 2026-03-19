@@ -177,6 +177,19 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
 
         return rows, None
 
+    @staticmethod
+    def _build_player_defaults(row: dict, suffix: str = "") -> dict:
+        """Build the defaults dict for update_or_create, omitting ranking when absent or empty."""
+        defaults: dict = {
+            "last_name": row[f"last_name{suffix}"].strip(),
+            "first_name": row[f"first_name{suffix}"].strip(),
+            "phone": row[f"phone{suffix}"].strip(),
+        }
+        ranking_raw = row.get(f"ranking{suffix}", "").strip()
+        if ranking_raw:
+            defaults["ranking"] = int(ranking_raw)
+        return defaults
+
     def _create_pairs_from_csv(
         self, tournament: Tournament, rows: list[dict]
     ) -> list[Pair]:
@@ -185,29 +198,11 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
             for row in rows:
                 player1, _ = Player.objects.update_or_create(
                     license_number=row["license_number"].strip(),
-                    defaults={
-                        "last_name": row["last_name"].strip(),
-                        "first_name": row["first_name"].strip(),
-                        "phone": row["phone"].strip(),
-                        "ranking": (
-                            int(row["ranking"])
-                            if row.get("ranking", "").strip()
-                            else None
-                        ),
-                    },
+                    defaults=self._build_player_defaults(row, suffix=""),
                 )
                 player2, _ = Player.objects.update_or_create(
                     license_number=row["license_number2"].strip(),
-                    defaults={
-                        "last_name": row["last_name2"].strip(),
-                        "first_name": row["first_name2"].strip(),
-                        "phone": row["phone2"].strip(),
-                        "ranking": (
-                            int(row["ranking2"])
-                            if row.get("ranking2", "").strip()
-                            else None
-                        ),
-                    },
+                    defaults=self._build_player_defaults(row, suffix="2"),
                 )
                 weight_str = row.get("weight", "").strip()
                 weight = float(weight_str) if weight_str else None
@@ -217,7 +212,7 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
                     player2=player2,
                     defaults={"weight": weight},
                 )
-                if not created:
+                if not created and weight_str:
                     pair.weight = weight
                     pair.save(update_fields=["weight", "updated_at"])
                 pairs.append(pair)

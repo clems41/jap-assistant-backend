@@ -120,7 +120,9 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
         summary="Import des paires depuis un fichier CSV",
         description=(
             "Importe les paires d'un tournoi depuis un fichier CSV. "
-            "Remplace toutes les paires existantes."
+            "Les paires existantes non présentes dans le CSV sont conservées. "
+            "Si une paire avec les mêmes joueurs existe déjà, son poids est mis à jour. "
+            "Les joueurs identifiés par leur numéro de licence sont créés ou mis à jour."
         ),
     )
     def post(self, request: Request, tournament_id: int) -> Response:
@@ -179,7 +181,6 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
         self, tournament: Tournament, rows: list[dict]
     ) -> list[Pair]:
         with transaction.atomic():
-            Pair.objects.filter(tournament=tournament).delete()
             pairs = []
             for row in rows:
                 player1, _ = Player.objects.update_or_create(
@@ -210,11 +211,14 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
                 )
                 weight_str = row.get("weight", "").strip()
                 weight = float(weight_str) if weight_str else None
-                pair = Pair.objects.create(
+                pair, created = Pair.objects.get_or_create(
                     tournament=tournament,
                     player1=player1,
                     player2=player2,
-                    weight=weight,
+                    defaults={"weight": weight},
                 )
+                if not created:
+                    pair.weight = weight
+                    pair.save(update_fields=["weight", "updated_at"])
                 pairs.append(pair)
         return pairs

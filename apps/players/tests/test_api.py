@@ -523,21 +523,52 @@ class TestCSVImport:
         player = Player.objects.get(license_number="UPLIC001")
         assert player.last_name == "Nouveau"
 
-    def test_csv_import_full_replace(self, auth_client, tournament):
+    def test_csv_import_preserves_existing_pairs_not_in_csv(self, auth_client, tournament):
         from apps.players.models import Pair
         from apps.players.tests.factories import PairFactory
-        # Create an existing pair in tournament
+        # Create an existing pair in the tournament with licenses not in the CSV
         existing_pair = PairFactory(tournament=tournament)
         existing_pair_id = existing_pair.id
 
         content = make_csv_content(
-            {"license_number": "REPLACE001", "license_number2": "REPLACE002"},
+            {"license_number": "UPSERT001", "license_number2": "UPSERT002"},
         )
         f = make_csv_file(content)
         response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
         assert response.status_code == 201
-        assert not Pair.objects.filter(id=existing_pair_id).exists()
+        # The existing pair must still be present
+        assert Pair.objects.filter(id=existing_pair_id).exists()
+        # The new pair from CSV must also be created
+        assert Pair.objects.filter(tournament=tournament).count() == 2
+
+    def test_csv_import_upserts_existing_pair_weight(self, auth_client, tournament):
+        """When a CSV row matches players already in an existing pair, update that pair."""
+        from apps.players.models import Pair
+        from apps.players.tests.factories import PairFactory, PlayerFactory
+        player1 = PlayerFactory(license_number="UPAIR_LIC001", ranking=100)
+        player2 = PlayerFactory(license_number="UPAIR_LIC002", ranking=200)
+        existing_pair = PairFactory(tournament=tournament, player1=player1, player2=player2, weight=300.0)
+
+        content = make_csv_content({
+            "last_name": player1.last_name,
+            "first_name": player1.first_name,
+            "license_number": "UPAIR_LIC001",
+            "phone": player1.phone,
+            "ranking": "100",
+            "last_name2": player2.last_name,
+            "first_name2": player2.first_name,
+            "license_number2": "UPAIR_LIC002",
+            "phone2": player2.phone,
+            "ranking2": "200",
+            "weight": "500.0",
+        })
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 201
+        # Only one pair must exist for this tournament (no duplicate created)
         assert Pair.objects.filter(tournament=tournament).count() == 1
+        existing_pair.refresh_from_db()
+        assert existing_pair.weight == 500.0
 
     def test_csv_import_no_file(self, auth_client, tournament):
         response = auth_client.post(csv_import_url(tournament.id), data={}, format="multipart")
@@ -569,7 +600,8 @@ class TestCSVImport:
         response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
         assert response.status_code == 400
 
-    def test_csv_import_empty_file(self, auth_client, tournament):
+    def test_csv_import_empty_file_preserves_existing_pairs(self, auth_client, tournament):
+        """An empty CSV (headers only) must not delete any existing pairs."""
         from apps.players.models import Pair
         from apps.players.tests.factories import PairFactory
         PairFactory(tournament=tournament)
@@ -578,7 +610,8 @@ class TestCSVImport:
         f = make_csv_file(content)
         response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
         assert response.status_code == 201
-        assert Pair.objects.filter(tournament=tournament).count() == 0
+        # The pre-existing pair must still be there
+        assert Pair.objects.filter(tournament=tournament).count() == 1
 
     def test_csv_import_phone_optional(self, auth_client, tournament):
         content = make_csv_content(

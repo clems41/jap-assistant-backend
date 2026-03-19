@@ -99,22 +99,25 @@ def _extract_page_rows(page: pdfium.PdfPage) -> list[list[dict]]:
     """
     page_height = page.get_height()
     textpage = page.get_textpage()
-    count = textpage.count_chars()
+    try:
+        count = textpage.count_chars()
 
-    chars: list[dict] = []
-    for i in range(count):
-        box = textpage.get_charbox(i, loose=False)
-        chars.append(
-            {
-                "text": textpage.get_text_range(i, 1),
-                "x": box[0],
-                "x2": box[2],
-                # Flip Y: small value = near top of page.
-                "y": page_height - box[3],
-            }
-        )
+        chars: list[dict] = []
+        for i in range(count):
+            box = textpage.get_charbox(i, loose=False)
+            chars.append(
+                {
+                    "text": textpage.get_text_range(i, 1),
+                    "x": box[0],
+                    "x2": box[2],
+                    # Flip Y: small value = near top of page.
+                    "y": page_height - box[3],
+                }
+            )
 
-    return _group_chars_into_rows(chars)
+        return _group_chars_into_rows(chars)
+    finally:
+        textpage.close()
 
 
 def _group_chars_into_rows(chars: list[dict]) -> list[list[dict]]:
@@ -320,7 +323,11 @@ def parse_fft_pdf(pdf_path: str) -> list[ParsedRankingEntry]:
     header_found = False
 
     for page in doc:
-        rows = _extract_page_rows(page)
+        try:
+            rows = _extract_page_rows(page)
+        finally:
+            page.close()
+
         for row in rows:
             row_text = _row_to_text(row)
 

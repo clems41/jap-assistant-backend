@@ -2,13 +2,16 @@ from django.db import models as db_models
 from rest_framework import serializers
 
 from .models import Pair, Player
-from .services.ranking_matching_service import _find_ranking
+from .services.ranking_matching_service import fill_rankings_for_players
 
 
 class PlayerInPairSerializer(serializers.ModelSerializer):
     # Remove the auto-generated UniqueValidator on license_number so that
     # we can handle upsert logic ourselves (update_or_create in PairSerializer).
     license_number = serializers.CharField(max_length=50)
+    # allow_null=True: the FFT CSV export and some clients send null for an empty phone.
+    # validate_phone normalises null → "" so the model CharField (non-nullable) is
+    # never given None. default="" handles the field being absent from the payload.
     phone = serializers.CharField(max_length=50, required=False, allow_null=True, allow_blank=True, default="")
 
     class Meta:
@@ -16,7 +19,8 @@ class PlayerInPairSerializer(serializers.ModelSerializer):
         fields = ["id", "last_name", "first_name", "license_number", "phone", "ranking"]
         read_only_fields = ["id"]
 
-    def validate_phone(self, value):
+    def validate_phone(self, value: str | None) -> str:
+        # Coerce null (allowed by allow_null=True) to empty string.
         return value or ""
 
 
@@ -98,23 +102,14 @@ class PairSerializer(serializers.ModelSerializer):
         return None
 
     def _fill_rankings(self, players: list[Player], force: bool = False) -> None:
-        """Attempt a FFTRanking lookup for each player.
+        """Delegate FFT ranking lookup to the ranking service.
 
-        If force=True, overwrite even existing rankings (use when player data was updated).
-        Otherwise, only fill players whose ranking is None.
+        See fill_rankings_for_players for the force=True semantics.
         """
         tournament = self._get_tournament()
         if tournament is None:
             return
-        to_save = []
-        for player in players:
-            if force or player.ranking is None:
-                matched = _find_ranking(player, tournament)
-                if matched is not None:
-                    player.ranking = matched
-                    to_save.append(player)
-        if to_save:
-            Player.objects.bulk_update(to_save, ["ranking", "updated_at"])
+        fill_rankings_for_players(players, tournament, force=force)
 
     def create(self, validated_data: dict) -> Pair:
         player1_data = validated_data.pop("player1")
@@ -122,6 +117,11 @@ class PairSerializer(serializers.ModelSerializer):
         player1 = self._upsert_player(player1_data)
         player2 = self._upsert_player(player2_data)
 
+        # force=True: the submitted payload fully defines the player's identity
+        # (including last_name / first_name), so we always re-resolve their FFT
+        # ranking — even if a ranking was already present before this request.
+        # This is intentional: creating a pair is an explicit data entry action
+        # and the FFT lookup is the authoritative source for the ranking.
         self._fill_rankings([player1, player2], force=True)
 
         calculated = self._compute_weight(player1, player2)
@@ -146,7 +146,14 @@ class PairSerializer(serializers.ModelSerializer):
             updated_players.append(instance.player1)
         if player2_data:
             updated_players.append(instance.player2)
-        unchanged_players = [p for p in [instance.player1, instance.player2] if p not in updated_players]
+        updated_pks = {p.pk for p in updated_players}
+        unchanged_players = [
+            p for p in [instance.player1, instance.player2] if p.pk not in updated_pks
+        ]
+        # force=True on updated players: any field change (including last_name /
+        # first_name) may have altered their identity, so we re-resolve their FFT
+        # ranking unconditionally. Players whose data was NOT touched in this
+        # request are passed with force=False so manually-set rankings are kept.
         self._fill_rankings(updated_players, force=True)
         self._fill_rankings(unchanged_players, force=False)
         should_recalculate = bool(updated_players) or instance.weight is None

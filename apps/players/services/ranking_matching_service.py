@@ -14,7 +14,7 @@ def _normalize(name: str) -> str:
     return name.replace("-", " ").lower().strip()
 
 
-def _find_ranking(player: Player, tournament: Tournament) -> int | None:
+def find_ranking(player: Player, tournament: Tournament) -> int | None:
     """Return the matched FFT ranking for a player, or None if ambiguous/not found."""
     norm_last = _normalize(player.last_name)
     norm_first = _normalize(player.first_name)
@@ -38,6 +38,38 @@ def _find_ranking(player: Player, tournament: Tournament) -> int | None:
     return None
 
 
+def fill_rankings_for_players(
+    players: list[Player], tournament: Tournament, force: bool = False
+) -> None:
+    """Attempt a FFTRanking lookup for each player and persist the result.
+
+    Args:
+        players: Players to process.
+        tournament: Used to filter FFTRanking by gender/league.
+        force: If True, overwrite existing rankings. If False, only fill
+               players whose ranking is currently None.
+
+    Note — intentional overwrite on force=True:
+        When force=True the caller signals that the player's identity data
+        (last_name / first_name) may have just changed, so the previous
+        ranking is stale and should be replaced by a fresh FFT lookup.
+        This is the desired behaviour when the user edits a player's name
+        via the API: the system re-resolves the ranking automatically.
+        A ranking that was set manually (and whose player data was NOT
+        modified in the same request) is never overwritten because those
+        players are passed with force=False.
+    """
+    to_save = []
+    for player in players:
+        if force or player.ranking is None:
+            matched = find_ranking(player, tournament)
+            if matched is not None:
+                player.ranking = matched
+                to_save.append(player)
+    if to_save:
+        Player.objects.bulk_update(to_save, ["ranking", "updated_at"])
+
+
 @transaction.atomic
 def match_and_update_rankings(tournament: Tournament) -> list[Pair]:
     pairs = list(
@@ -50,7 +82,7 @@ def match_and_update_rankings(tournament: Tournament) -> list[Pair]:
     for pair in pairs:
         for player in [pair.player1, pair.player2]:
             if player.ranking is None and player.pk not in seen_player_ids:
-                matched = _find_ranking(player, tournament)
+                matched = find_ranking(player, tournament)
                 if matched is not None:
                     player.ranking = matched
                     players_to_save.append(player)

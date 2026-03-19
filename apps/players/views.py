@@ -123,7 +123,11 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
             "Importe les paires d'un tournoi depuis un fichier CSV. "
             "Les paires existantes non présentes dans le CSV sont conservées. "
             "Si une paire avec les mêmes joueurs existe déjà, son poids est mis à jour. "
-            "Les joueurs identifiés par leur numéro de licence sont créés ou mis à jour."
+            "Les joueurs identifiés par leur numéro de licence sont créés ou mis à jour. "
+            "Après l'import, un matching FFT est automatiquement déclenché pour les joueurs "
+            "sans classement. "
+            "La réponse contient l'ensemble des paires du tournoi (pas uniquement celles du CSV), "
+            "avec les classements et poids mis à jour."
         ),
     )
     def post(self, request: Request, tournament_id: int) -> Response:

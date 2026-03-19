@@ -895,25 +895,13 @@ class TestCSVImportAutoFFTMatching:
         already present on the player before the import.
         """
         from apps.players.models import Player
-        from apps.players.tests.factories import FFTRankingFactory
+        from apps.players.tests.factories import FFTRankingFactory, PlayerFactory
         from apps.tournaments.models import Tournament
 
         tournament = self._make_tournament(user)
 
-        Player.objects.create(
-            last_name="Leroy",
-            first_name="Paul",
-            license_number="NOOVERWRITE001",
-            phone="",
-            ranking=50,
-        )
-        Player.objects.create(
-            last_name="Simon",
-            first_name="Jean",
-            license_number="NOOVERWRITE002",
-            phone="",
-            ranking=75,
-        )
+        PlayerFactory(last_name="Leroy", first_name="Paul", license_number="NOOVERWRITE001", phone="", ranking=50)
+        PlayerFactory(last_name="Simon", first_name="Jean", license_number="NOOVERWRITE002", phone="", ranking=75)
         # FFT has different values — must NOT be used
         FFTRankingFactory(
             last_name="Leroy",

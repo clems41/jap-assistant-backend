@@ -103,9 +103,12 @@ def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Respons
             fields = field_errors or None
             if fields and not non_field and "detail" not in data:
                 first_errors = next(iter(fields.values()))
-                # Nested serializer errors are dicts — drill down to find the first list
-                while isinstance(first_errors, dict) and first_errors:
+                # Nested serializer errors are dicts — drill down to find the first list.
+                # Bounded to avoid infinite loops on unexpectedly deep structures.
+                max_depth = 5
+                while isinstance(first_errors, dict) and first_errors and max_depth > 0:
                     first_errors = next(iter(first_errors.values()))
+                    max_depth -= 1
                 if isinstance(first_errors, list) and first_errors:
                     message = str(first_errors[0])
         elif isinstance(data, list) and data:

@@ -87,6 +87,10 @@ uv run python manage.py shell
 
 ## Conventions
 
+### Comportement attendu de l'assistant
+
+**Poser des questions plutôt que supposer.** Si une demande est ambiguë — périmètre flou, noms de champs manquants, comportement attendu incertain, choix de design non explicite — l'assistant doit s'arrêter et demander une clarification avant d'écrire du code. Une mauvaise implémentation coûte plus cher qu'une question posée à temps. Ne jamais inventer des requirements ni supposer une logique métier.
+
 ### Language
 - **Code en anglais** : noms de variables, fonctions, classes, commentaires, docstrings, messages de commit, noms de tests, champs de modèles, champs de serializers, noms d'URL
 - **Contenu utilisateur en français** : messages d'erreur, labels, valeurs d'enum exposées à l'utilisateur — l'app est destinée à un public francophone uniquement, sans besoin de traduction

@@ -1,7 +1,8 @@
 import factory
 from factory.django import DjangoModelFactory
 
-from apps.players.models import Pair, Player
+from apps.players.models import FFTRanking, Pair, Player
+from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
 
 
@@ -15,6 +16,19 @@ class PlayerFactory(DjangoModelFactory):
     license_number = factory.Sequence(lambda n: f"LIC{n:07d}")
     phone = factory.Faker("phone_number")
     ranking = factory.Faker("random_int", min=1, max=1000)
+
+
+class FFTRankingFactory(DjangoModelFactory):
+    class Meta:
+        model = FFTRanking
+
+    last_name = factory.Faker("last_name")
+    first_name = factory.Faker("first_name")
+    league = Tournament.League.ILE_DE_FRANCE
+    ranking = factory.Faker("random_int", min=1, max=1000)
+    points = None
+    gender = Tournament.Gender.MALE
+    source_filename = "test.pdf"
 
 
 class PairFactory(DjangoModelFactory):

@@ -17,6 +17,7 @@ from apps.tournaments.models import Tournament
 
 from .models import Pair, Player
 from .serializers import PairCSVImportSerializer, PairSerializer
+from .services.ranking_matching_service import match_and_update_rankings
 
 EXPECTED_HEADERS = [
     "last_name",
@@ -217,3 +218,33 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
                     pair.save(update_fields=["weight", "updated_at"])
                 pairs.append(pair)
         return pairs
+
+
+class RankingMatchingView(TournamentScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={200: PairSerializer(many=True)},
+        summary="Matching des classements FFT pour les paires du tournoi",
+        description=(
+            "Pour chaque joueur sans classement, cherche une correspondance dans la table FFTRanking "
+            "par nom/prénom (filtré par genre du tournoi). "
+            "Les classements existants ne sont pas modifiés. "
+            "Recalcule le poids de la paire si les deux joueurs ont un classement."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="tournament_id",
+                location=OpenApiParameter.PATH,
+                type=int,
+            ),
+        ],
+    )
+    def get(self, request: Request, tournament_id: int) -> Response:
+        pairs = match_and_update_rankings(self._tournament)
+        serializer = PairSerializer(
+            pairs,
+            many=True,
+            context={"request": request, "tournament": self._tournament},
+        )
+        return Response(serializer.data)

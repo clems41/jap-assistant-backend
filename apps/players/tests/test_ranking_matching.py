@@ -343,6 +343,49 @@ def test_weight_not_updated_when_only_one_has_ranking(client, tournament):
 
 
 # ---------------------------------------------------------------------------
+# Normalisation des noms (accents, tirets)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_hyphen_in_first_name_matches_space(client, tournament):
+    """'paul-henri' (joueur) doit matcher 'paul henri' (FFT)."""
+    player = PlayerFactory(ranking=None, first_name="paul-henri", last_name="argiot")
+    FFTRankingFactory(
+        last_name="argiot",
+        first_name="paul henri",
+        ranking=55,
+        gender=Tournament.Gender.MALE,
+    )
+    partner = PlayerFactory(ranking=None)
+    PairFactory(tournament=tournament, player1=player, player2=partner)
+
+    client.get(url(tournament.pk))
+
+    player.refresh_from_db()
+    assert player.ranking == 55
+
+
+@pytest.mark.django_db
+def test_missing_accent_in_first_name_matches(client, tournament):
+    """'Clement' (joueur sans accent) doit matcher 'Clément' (FFT avec accent)."""
+    player = PlayerFactory(ranking=None, first_name="Clement", last_name="niot")
+    FFTRankingFactory(
+        last_name="niot",
+        first_name="Clément",
+        ranking=88,
+        gender=Tournament.Gender.MALE,
+    )
+    partner = PlayerFactory(ranking=None)
+    PairFactory(tournament=tournament, player1=player, player2=partner)
+
+    client.get(url(tournament.pk))
+
+    player.refresh_from_db()
+    assert player.ranking == 88
+
+
+# ---------------------------------------------------------------------------
 # Format de réponse
 # ---------------------------------------------------------------------------
 

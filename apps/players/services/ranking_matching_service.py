@@ -1,3 +1,5 @@
+import unicodedata
+
 from django.db import transaction
 
 from apps.tournaments.models import Tournament
@@ -5,22 +7,34 @@ from apps.tournaments.models import Tournament
 from ..models import FFTRanking, Pair, Player
 
 
+def _normalize(name: str) -> str:
+    """Normalize a name for fuzzy comparison: strip accents, replace hyphens with spaces, lowercase."""
+    name = unicodedata.normalize("NFKD", name)
+    name = "".join(c for c in name if not unicodedata.combining(c))
+    return name.replace("-", " ").lower().strip()
+
+
 def _find_ranking(player: Player, tournament: Tournament) -> int | None:
     """Return the matched FFT ranking for a player, or None if ambiguous/not found."""
-    qs = FFTRanking.objects.filter(
-        last_name__iexact=player.last_name,
-        first_name__iexact=player.first_name,
-    )
+    norm_last = _normalize(player.last_name)
+    norm_first = _normalize(player.first_name)
+
+    qs = FFTRanking.objects.filter(last_name__iexact=player.last_name)
     if tournament.gender != Tournament.Gender.MIXED:
         qs = qs.filter(gender=tournament.gender)
 
-    count = qs.count()
-    if count == 1:
-        return qs.first().ranking
-    if count > 1:
-        league_qs = qs.filter(league=tournament.league)
-        if league_qs.count() == 1:
-            return league_qs.first().ranking
+    matches = [
+        r
+        for r in qs
+        if _normalize(r.last_name) == norm_last and _normalize(r.first_name) == norm_first
+    ]
+
+    if len(matches) == 1:
+        return matches[0].ranking
+    if len(matches) > 1:
+        league_matches = [r for r in matches if r.league == tournament.league]
+        if len(league_matches) == 1:
+            return league_matches[0].ranking
     return None
 
 

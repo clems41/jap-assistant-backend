@@ -85,11 +85,23 @@ class PairSerializer(serializers.ModelSerializer):
         )
         return player
 
+    @staticmethod
+    def _compute_weight(player1: Player, player2: Player) -> float | None:
+        """Return player1.ranking + player2.ranking, or None if either is missing."""
+        if player1.ranking is not None and player2.ranking is not None:
+            return float(player1.ranking + player2.ranking)
+        return None
+
     def create(self, validated_data: dict) -> Pair:
         player1_data = validated_data.pop("player1")
         player2_data = validated_data.pop("player2")
         player1 = self._upsert_player(player1_data)
         player2 = self._upsert_player(player2_data)
+
+        calculated = self._compute_weight(player1, player2)
+        if calculated is not None:
+            validated_data["weight"] = calculated
+
         return Pair.objects.create(player1=player1, player2=player2, **validated_data)
 
     def update(self, instance: Pair, validated_data: dict) -> Pair:
@@ -100,6 +112,14 @@ class PairSerializer(serializers.ModelSerializer):
             self._update_player(instance.player1, player1_data)
         if player2_data:
             self._update_player(instance.player2, player2_data)
+
+        # Recalculate weight when at least one player was updated and both have rankings.
+        if player1_data or player2_data:
+            instance.player1.refresh_from_db()
+            instance.player2.refresh_from_db()
+            calculated = self._compute_weight(instance.player1, instance.player2)
+            if calculated is not None:
+                validated_data["weight"] = calculated
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

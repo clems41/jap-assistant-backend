@@ -297,9 +297,24 @@ class TestCreatePair:
         assert player.last_name == "Nouveau"
         assert player.ranking == 200
 
-    def test_create_pair_weight_optional(self, auth_client, tournament, pair_payload):
-        payload = pair_payload.copy()
-        payload["weight"] = None
+    def test_create_pair_weight_none_when_no_rankings(self, auth_client, tournament):
+        """Weight stays None when both players have no ranking."""
+        payload = {
+            "player1": {
+                "last_name": "Martin",
+                "first_name": "Julien",
+                "license_number": "LIC_WO_RANK1",
+                "phone": "",
+                "ranking": None,
+            },
+            "player2": {
+                "last_name": "Roux",
+                "first_name": "Quentin",
+                "license_number": "LIC_WO_RANK2",
+                "phone": "",
+                "ranking": None,
+            },
+        }
         response = auth_client.post(pairs_url(tournament.id), data=payload, format="json")
         assert response.status_code == 201
         assert response.data["weight"] is None

@@ -1,9 +1,11 @@
+from datetime import time
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.tournaments.models import Tournament
-from apps.tournaments.tests.factories import TournamentFactory
+from apps.tournaments.models import TimeSlot, Tournament
+from apps.tournaments.tests.factories import TimeSlotFactory, TournamentFactory
 from apps.users.tests.factories import UserFactory
 
 LIST_CREATE_URL = "/api/v1/tournaments/"
@@ -896,3 +898,166 @@ class TestEstimatedMatchDuration:
         )
         assert response.status_code == status.HTTP_200_OK
         assert response.data["estimated_match_duration"] == 55
+
+
+# ---------------------------------------------------------------------------
+# Time slots
+# ---------------------------------------------------------------------------
+
+TIME_SLOTS_LIST_URL = "/api/v1/tournaments/{tournament_id}/time-slots/"
+TIME_SLOTS_DETAIL_URL = "/api/v1/tournaments/{tournament_id}/time-slots/{pk}/"
+
+VALID_SLOT_PAYLOAD = {
+    "start_time": "09:00:00",
+    "end_time": "11:00:00",
+    "courts_available": 4,
+}
+
+
+@pytest.mark.django_db
+class TestTimeSlotListCreate:
+    def test_list_requires_authentication(self, client, tournament) -> None:
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
+        response = client.get(url)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_list_returns_all_slots_without_pagination(self, authenticated_client, tournament) -> None:
+        TimeSlotFactory(tournament=tournament)
+        TimeSlotFactory(tournament=tournament)
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
+        response = authenticated_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert isinstance(response.data, list)
+        assert len(response.data) == 2
+
+    def test_list_returns_only_slots_of_own_tournament(self, authenticated_client, tournament) -> None:
+        TimeSlotFactory(tournament=tournament)
+        TimeSlotFactory(tournament=tournament)
+        other_tournament = TournamentFactory()
+        TimeSlotFactory(tournament=other_tournament)
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
+        response = authenticated_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 2
+
+    def test_list_tournament_not_found_returns_404(self, authenticated_client) -> None:
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=99999)
+        response = authenticated_client.get(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_list_other_user_tournament_returns_404(self, authenticated_client) -> None:
+        other_tournament = TournamentFactory()
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=other_tournament.pk)
+        response = authenticated_client.get(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_create_requires_authentication(self, client, tournament) -> None:
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
+        response = client.post(url, data=VALID_SLOT_PAYLOAD, format="json")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_success(self, authenticated_client, tournament) -> None:
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
+        response = authenticated_client.post(url, data=VALID_SLOT_PAYLOAD, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["start_time"] == "09:00:00"
+        assert response.data["end_time"] == "11:00:00"
+        assert response.data["courts_available"] == 4
+        assert response.data["tournament"] == tournament.pk
+
+    def test_create_tournament_not_found_returns_404(self, authenticated_client) -> None:
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=99999)
+        response = authenticated_client.post(url, data=VALID_SLOT_PAYLOAD, format="json")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_create_other_user_tournament_returns_404(self, authenticated_client) -> None:
+        other_tournament = TournamentFactory()
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=other_tournament.pk)
+        response = authenticated_client.post(url, data=VALID_SLOT_PAYLOAD, format="json")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_create_end_before_start_returns_400(self, authenticated_client, tournament) -> None:
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
+        payload = {"start_time": "11:00:00", "end_time": "09:00:00", "courts_available": 4}
+        response = authenticated_client.post(url, data=payload, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_create_equal_times_returns_400(self, authenticated_client, tournament) -> None:
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
+        payload = {"start_time": "09:00:00", "end_time": "09:00:00", "courts_available": 4}
+        response = authenticated_client.post(url, data=payload, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_create_missing_field_returns_400(self, authenticated_client, tournament) -> None:
+        url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
+        payload = {"start_time": "09:00:00", "end_time": "11:00:00"}
+        response = authenticated_client.post(url, data=payload, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+class TestTimeSlotDetail:
+    def test_retrieve_requires_authentication(self, client, tournament) -> None:
+        slot = TimeSlotFactory(tournament=tournament)
+        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
+        response = client.get(url)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_retrieve_own_slot_returns_200(self, authenticated_client, tournament) -> None:
+        slot = TimeSlotFactory(tournament=tournament, start_time=time(9, 0), end_time=time(11, 0), courts_available=3)
+        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
+        response = authenticated_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == slot.pk
+        assert response.data["courts_available"] == 3
+
+    def test_retrieve_other_user_slot_returns_404(self, authenticated_client) -> None:
+        other_tournament = TournamentFactory()
+        slot = TimeSlotFactory(tournament=other_tournament)
+        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=other_tournament.pk, pk=slot.pk)
+        response = authenticated_client.get(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_update_success(self, authenticated_client, tournament) -> None:
+        slot = TimeSlotFactory(tournament=tournament)
+        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
+        payload = {"start_time": "10:00:00", "end_time": "12:00:00", "courts_available": 6}
+        response = authenticated_client.put(url, data=payload, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["courts_available"] == 6
+
+    def test_partial_update_success(self, authenticated_client, tournament) -> None:
+        slot = TimeSlotFactory(tournament=tournament, courts_available=2)
+        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
+        response = authenticated_client.patch(url, data={"courts_available": 8}, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["courts_available"] == 8
+
+    def test_update_end_before_start_returns_400(self, authenticated_client, tournament) -> None:
+        slot = TimeSlotFactory(tournament=tournament)
+        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
+        payload = {"start_time": "12:00:00", "end_time": "09:00:00", "courts_available": 4}
+        response = authenticated_client.put(url, data=payload, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_update_other_user_slot_returns_404(self, authenticated_client) -> None:
+        other_tournament = TournamentFactory()
+        slot = TimeSlotFactory(tournament=other_tournament)
+        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=other_tournament.pk, pk=slot.pk)
+        payload = {"start_time": "10:00:00", "end_time": "12:00:00", "courts_available": 2}
+        response = authenticated_client.put(url, data=payload, format="json")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_delete_own_slot_returns_204(self, authenticated_client, tournament) -> None:
+        slot = TimeSlotFactory(tournament=tournament)
+        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
+        response = authenticated_client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not TimeSlot.objects.filter(pk=slot.pk).exists()
+
+    def test_delete_other_user_slot_returns_404(self, authenticated_client) -> None:
+        other_tournament = TournamentFactory()
+        slot = TimeSlotFactory(tournament=other_tournament)
+        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=other_tournament.pk, pk=slot.pk)
+        response = authenticated_client.delete(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND

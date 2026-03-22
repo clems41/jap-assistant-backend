@@ -91,3 +91,20 @@ class Tournament(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.name
+
+
+class TimeSlot(TimeStampedModel):
+    tournament = models.ForeignKey(
+        Tournament,
+        on_delete=models.CASCADE,
+        related_name="time_slots",
+    )
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    courts_available = models.PositiveSmallIntegerField()
+
+    class Meta:
+        ordering = ["start_time"]
+
+    def __str__(self) -> str:
+        return f"{self.start_time:%H:%M} – {self.end_time:%H:%M} ({self.courts_available} courts)"

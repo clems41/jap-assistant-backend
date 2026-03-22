@@ -2,6 +2,8 @@ from django.urls import path
 
 from apps.tournaments.views import (
     LastLeagueView,
+    TimeSlotDetailView,
+    TimeSlotListCreateView,
     TournamentCategoryEnumView,
     TournamentConfigurationEnumView,
     TournamentDetailView,
@@ -25,4 +27,7 @@ urlpatterns = [
     # CRUD
     path("", TournamentListCreateView.as_view(), name="tournament-list"),
     path("<int:pk>/", TournamentDetailView.as_view(), name="tournament-detail"),
+    # Time slots (sub-collection)
+    path("<int:tournament_id>/time-slots/", TimeSlotListCreateView.as_view(), name="tournament-time-slot-list"),
+    path("<int:tournament_id>/time-slots/<int:pk>/", TimeSlotDetailView.as_view(), name="tournament-time-slot-detail"),
 ]

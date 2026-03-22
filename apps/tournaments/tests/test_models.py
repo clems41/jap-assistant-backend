@@ -1,7 +1,10 @@
+from datetime import time
+
 import pytest
 
-from apps.tournaments.models import Tournament
-from apps.tournaments.tests.factories import TournamentFactory
+from apps.tournaments.models import TimeSlot, Tournament
+from apps.tournaments.serializers import TimeSlotSerializer
+from apps.tournaments.tests.factories import TimeSlotFactory, TournamentFactory
 
 
 @pytest.mark.django_db
@@ -78,3 +81,73 @@ class TestGameFormatDefaultDurations:
             "F": 25,
         }
         assert Tournament.GAME_FORMAT_DEFAULT_DURATIONS == expected
+
+
+@pytest.mark.django_db
+class TestTimeSlotModel:
+    def test_create_timeslot_with_all_fields(self) -> None:
+        slot = TimeSlotFactory(start_time=time(9, 0), end_time=time(11, 0), courts_available=6)
+        assert slot.pk is not None
+        assert slot.start_time == time(9, 0)
+        assert slot.end_time == time(11, 0)
+        assert slot.courts_available == 6
+
+    def test_timeslot_belongs_to_tournament(self) -> None:
+        tournament = TournamentFactory()
+        slot = TimeSlotFactory(tournament=tournament)
+        assert slot.tournament == tournament
+        assert slot in tournament.time_slots.all()
+
+    def test_timeslot_str(self) -> None:
+        slot = TimeSlotFactory(start_time=time(9, 0), end_time=time(11, 0))
+        assert "09:00" in str(slot)
+        assert "11:00" in str(slot)
+
+    def test_timeslot_inherits_timestamps(self) -> None:
+        slot = TimeSlotFactory()
+        assert slot.created_at is not None
+        assert slot.updated_at is not None
+
+    def test_timeslot_ordering_is_by_start_time(self) -> None:
+        tournament = TournamentFactory()
+        TimeSlotFactory(tournament=tournament, start_time=time(14, 0), end_time=time(16, 0))
+        TimeSlotFactory(tournament=tournament, start_time=time(8, 0), end_time=time(10, 0))
+        slots = list(TimeSlot.objects.filter(tournament=tournament))
+        assert slots[0].start_time == time(8, 0)
+        assert slots[1].start_time == time(14, 0)
+
+
+@pytest.mark.django_db
+class TestTimeSlotSerializer:
+    def test_end_time_must_be_after_start_time(self) -> None:
+        serializer = TimeSlotSerializer(data={
+            "start_time": "10:00:00",
+            "end_time": "09:00:00",
+            "courts_available": 3,
+        })
+        assert not serializer.is_valid()
+        assert "end_time" in serializer.errors or "non_field_errors" in serializer.errors
+
+    def test_equal_times_are_invalid(self) -> None:
+        serializer = TimeSlotSerializer(data={
+            "start_time": "10:00:00",
+            "end_time": "10:00:00",
+            "courts_available": 3,
+        })
+        assert not serializer.is_valid()
+
+    def test_valid_data_passes(self) -> None:
+        serializer = TimeSlotSerializer(data={
+            "start_time": "09:00:00",
+            "end_time": "11:00:00",
+            "courts_available": 4,
+        })
+        assert serializer.is_valid(), serializer.errors
+
+    def test_courts_available_zero_is_invalid(self) -> None:
+        serializer = TimeSlotSerializer(data={
+            "start_time": "09:00:00",
+            "end_time": "11:00:00",
+            "courts_available": 0,
+        })
+        assert not serializer.is_valid()

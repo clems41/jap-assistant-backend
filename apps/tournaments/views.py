@@ -1,6 +1,7 @@
 from typing import Any
 
 from django.db.models import TextChoices
+from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, serializers
@@ -10,9 +11,13 @@ from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer, CharField, Serializer
 from rest_framework.views import APIView
 
-from apps.tournaments.models import Tournament
+from apps.tournaments.models import TimeSlot, Tournament
 from apps.tournaments.permissions import IsOwner
-from apps.tournaments.serializers import LastLeagueSerializer, TournamentSerializer
+from apps.tournaments.serializers import (
+    LastLeagueSerializer,
+    TimeSlotSerializer,
+    TournamentSerializer,
+)
 
 
 def enum_to_value_label(choices_class: type[TextChoices]) -> list[dict[str, str]]:
@@ -190,3 +195,36 @@ class LastLeagueView(APIView):
         )
         league = tournament.league if tournament is not None else None
         return Response({"league": league})
+
+
+def _get_tournament_for_user(tournament_pk: int, user) -> Tournament:
+    return get_object_or_404(Tournament, pk=tournament_pk, owner=user)
+
+
+class TimeSlotListCreateView(generics.ListCreateAPIView):
+    """List or create time slots for a tournament owned by the authenticated user."""
+
+    serializer_class = TimeSlotSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    ordering_fields = ["start_time", "end_time", "courts_available"]
+    ordering = ["start_time"]
+
+    def get_queryset(self):
+        tournament = _get_tournament_for_user(self.kwargs["tournament_id"], self.request.user)
+        return TimeSlot.objects.filter(tournament=tournament)
+
+    def perform_create(self, serializer: BaseSerializer) -> None:
+        tournament = _get_tournament_for_user(self.kwargs["tournament_id"], self.request.user)
+        serializer.save(tournament=tournament)
+
+
+class TimeSlotDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, or delete a time slot belonging to the authenticated user's tournament."""
+
+    serializer_class = TimeSlotSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        tournament = _get_tournament_for_user(self.kwargs["tournament_id"], self.request.user)
+        return TimeSlot.objects.filter(tournament=tournament)

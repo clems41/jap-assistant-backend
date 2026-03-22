@@ -3,7 +3,7 @@ from typing import Any
 from django.db.models import TextChoices
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import generics
+from rest_framework import generics, serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -26,6 +26,11 @@ def enum_to_value_label(choices_class: type[TextChoices]) -> list[dict[str, str]
 class _EnumChoiceSerializer(Serializer):
     value = CharField()
     label = CharField()
+
+
+class _GameFormatDurationSerializer(Serializer):
+    format = CharField()
+    duration = serializers.IntegerField()
 
 
 class TournamentCategoryEnumView(APIView):
@@ -56,6 +61,26 @@ class TournamentGenderEnumView(APIView):
     @extend_schema(responses={200: _EnumChoiceSerializer(many=True)})
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return Response(enum_to_value_label(Tournament.Gender))
+
+
+class TournamentGameFormatEnumView(APIView):
+    """Return all valid tournament game format choices."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(responses={200: _EnumChoiceSerializer(many=True)})
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        return Response(enum_to_value_label(Tournament.GameFormat))
+
+
+class TournamentConfigurationEnumView(APIView):
+    """Return all valid tournament configuration choices."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(responses={200: _EnumChoiceSerializer(many=True)})
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        return Response(enum_to_value_label(Tournament.Configuration))
 
 
 _TOURNAMENT_LIST_FILTERS = [
@@ -134,6 +159,20 @@ class TournamentDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return Tournament.objects.filter(owner=self.request.user)
+
+
+class TournamentGameFormatDurationView(APIView):
+    """Return the default estimated duration (in minutes) for each game format."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(responses={200: _GameFormatDurationSerializer(many=True)})
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        data = [
+            {"format": fmt, "duration": duration}
+            for fmt, duration in Tournament.GAME_FORMAT_DEFAULT_DURATIONS.items()
+        ]
+        return Response(data)
 
 
 class LastLeagueView(APIView):

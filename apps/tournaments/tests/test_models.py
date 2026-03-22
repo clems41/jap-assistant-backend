@@ -56,3 +56,25 @@ class TestTournamentModel:
         assert "Femme" in valid_genders
         assert "Mixte" in valid_genders
         assert len(valid_genders) == 3
+
+
+@pytest.mark.django_db
+class TestGameFormatDefaultDurations:
+    def test_game_format_default_durations_covers_all_formats(self) -> None:
+        for fmt in Tournament.GameFormat:
+            assert fmt in Tournament.GAME_FORMAT_DEFAULT_DURATIONS
+
+    def test_game_format_default_durations_values(self) -> None:
+        expected = {
+            "A1": 100,
+            "A2": 90,
+            "B1": 70,
+            "B2": 60,
+            "C1": 50,
+            "C2": 45,
+            "D1": 50,
+            "D2": 45,
+            "E": 20,
+            "F": 25,
+        }
+        assert Tournament.GAME_FORMAT_DEFAULT_DURATIONS == expected

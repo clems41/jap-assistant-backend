@@ -12,6 +12,7 @@ DETAIL_URL = "/api/v1/tournaments/{pk}/"
 CATEGORIES_URL = "/api/v1/tournaments/enums/categories/"
 LEAGUES_URL = "/api/v1/tournaments/enums/leagues/"
 GENDERS_URL = "/api/v1/tournaments/enums/genders/"
+CONFIGURATIONS_URL = "/api/v1/tournaments/enums/configurations/"
 
 
 @pytest.fixture
@@ -439,6 +440,65 @@ class TestEnumGenders:
         assert response.status_code != status.HTTP_401_UNAUTHORIZED
 
 
+GAME_FORMATS_URL = "/api/v1/tournaments/enums/game-formats/"
+
+
+@pytest.mark.django_db
+class TestEnumGameFormats:
+    def test_list_game_formats_returns_200(self, api_client: APIClient) -> None:
+        """GET /tournaments/enums/game-formats/ is public and returns 200."""
+        response = api_client.get(GAME_FORMATS_URL)
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_list_game_formats_returns_all_game_formats(
+        self, api_client: APIClient
+    ) -> None:
+        response = api_client.get(GAME_FORMATS_URL)
+        assert len(response.data) == len(Tournament.GameFormat)
+
+    def test_list_game_formats_item_format(self, api_client: APIClient) -> None:
+        """Each item must have 'value' and 'label' keys."""
+        response = api_client.get(GAME_FORMATS_URL)
+        first = response.data[0]
+        assert "value" in first
+        assert "label" in first
+
+    def test_list_game_formats_a1_entry(self, api_client: APIClient) -> None:
+        response = api_client.get(GAME_FORMATS_URL)
+        values = {item["value"] for item in response.data}
+        assert "A1" in values
+        a1 = next(item for item in response.data if item["value"] == "A1")
+        assert a1["label"] == "A1 : 3 sets à 6 jeux, jeu décisif à 6-6"
+
+    def test_list_game_formats_no_auth_required(self, api_client: APIClient) -> None:
+        response = api_client.get(GAME_FORMATS_URL)
+        assert response.status_code != status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+class TestEnumConfigurations:
+    def test_list_configurations_returns_200(self, api_client: APIClient) -> None:
+        res = api_client.get(CONFIGURATIONS_URL)
+        assert res.status_code == status.HTTP_200_OK
+
+    def test_list_configurations_returns_all_configurations(self, api_client: APIClient) -> None:
+        res = api_client.get(CONFIGURATIONS_URL)
+        assert len(res.data) == len(Tournament.Configuration)
+
+    def test_list_configurations_item_format(self, api_client: APIClient) -> None:
+        res = api_client.get(CONFIGURATIONS_URL)
+        item = res.data[0]
+        assert set(item.keys()) == {"value", "label"}
+
+    def test_list_configurations_tmc_entry(self, api_client: APIClient) -> None:
+        res = api_client.get(CONFIGURATIONS_URL)
+        assert {"value": "TMC", "label": "Tournoi Multi Chance (TMC)"} in res.data
+
+    def test_list_configurations_no_auth_required(self, api_client: APIClient) -> None:
+        res = api_client.get(CONFIGURATIONS_URL)
+        assert res.status_code == status.HTTP_200_OK
+
+
 # ---------------------------------------------------------------------------
 # Last league
 # ---------------------------------------------------------------------------
@@ -762,3 +822,77 @@ class TestLastLeague:
         response = authenticated_client.get(LAST_LEAGUE_URL)
         assert response.status_code == status.HTTP_200_OK
         assert set(response.data.keys()) == {"league"}
+
+
+# ---------------------------------------------------------------------------
+# Game format durations enum
+# ---------------------------------------------------------------------------
+
+GAME_FORMAT_DURATIONS_URL = "/api/v1/tournaments/enums/game-format-durations/"
+
+
+@pytest.mark.django_db
+class TestGameFormatDurationEnum:
+    def test_get_game_format_durations_returns_200(self, api_client: APIClient) -> None:
+        """GET /tournaments/enums/game-format-durations/ is public and returns 200."""
+        response = api_client.get(GAME_FORMAT_DURATIONS_URL)
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_get_game_format_durations_no_auth_required(self, api_client: APIClient) -> None:
+        response = api_client.get(GAME_FORMAT_DURATIONS_URL)
+        assert response.status_code != status.HTTP_401_UNAUTHORIZED
+
+    def test_get_game_format_durations_returns_all_10_formats(
+        self, api_client: APIClient
+    ) -> None:
+        response = api_client.get(GAME_FORMAT_DURATIONS_URL)
+        assert len(response.data) == len(Tournament.GameFormat)
+
+    def test_get_game_format_durations_item_has_format_and_duration_keys(
+        self, api_client: APIClient
+    ) -> None:
+        response = api_client.get(GAME_FORMAT_DURATIONS_URL)
+        first = response.data[0]
+        assert "format" in first
+        assert "duration" in first
+
+    def test_get_game_format_durations_values_are_correct(
+        self, api_client: APIClient
+    ) -> None:
+        response = api_client.get(GAME_FORMAT_DURATIONS_URL)
+        by_format = {item["format"]: item["duration"] for item in response.data}
+        assert by_format["A1"] == 100
+        assert by_format["A2"] == 90
+        assert by_format["B1"] == 70
+        assert by_format["B2"] == 60
+        assert by_format["C1"] == 50
+        assert by_format["C2"] == 45
+        assert by_format["D1"] == 50
+        assert by_format["D2"] == 45
+        assert by_format["E"] == 20
+        assert by_format["F"] == 25
+
+
+@pytest.mark.django_db
+class TestEstimatedMatchDuration:
+    def test_tournament_response_includes_estimated_match_duration_field(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """GET /tournaments/{id}/ response includes the estimated_match_duration field."""
+        tournament = TournamentFactory(owner=user)
+        response = authenticated_client.get(DETAIL_URL.format(pk=tournament.pk))
+        assert response.status_code == status.HTTP_200_OK
+        assert "estimated_match_duration" in response.data
+
+    def test_patch_estimated_match_duration(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """PATCH estimated_match_duration updates the field."""
+        tournament = TournamentFactory(owner=user)
+        response = authenticated_client.patch(
+            DETAIL_URL.format(pk=tournament.pk),
+            {"estimated_match_duration": 55},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["estimated_match_duration"] == 55

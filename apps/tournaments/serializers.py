@@ -15,6 +15,9 @@ class TournamentSerializer(serializers.ModelSerializer):
             "location",
             "league",
             "gender",
+            "game_format",
+            "configuration",
+            "estimated_match_duration",
             "created_at",
             "updated_at",
         ]

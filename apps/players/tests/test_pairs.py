@@ -280,3 +280,305 @@ class TestPairWeightCalculationOnUpdate:
         pair.player2.refresh_from_db()
         assert pair.player1.ranking == 450
         assert pair.player2.ranking == 550
+
+
+# ---------------------------------------------------------------------------
+# TestPairRankingUpdateBehavior
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestPairRankingUpdateBehavior:
+    """Tests verifying that explicit rankings in PATCH/PUT are never overwritten by FFT.
+
+    Business rules:
+    - Ranking explicitly provided in the request → keep as-is, no FFT re-fetch.
+    - Name changed without explicit ranking → re-fetch FFT (force=True).
+    - Other fields only (phone, etc.) → keep existing ranking (force=False).
+    """
+
+    def test_patch_explicit_ranking_player1_not_overwritten_by_fft(
+        self, auth_client, tournament, monkeypatch
+    ):
+        """PATCH with only player1 ranking → ranking saved as-is, FFT not called force=True."""
+        calls = []
+
+        def fake_fill(players, tournament, force=False):
+            calls.append({"players": list(players), "force": force})
+
+        monkeypatch.setattr(
+            "apps.players.serializers.fill_rankings_for_players", fake_fill
+        )
+
+        pair = PairFactory(tournament=tournament)
+        pair.player1.ranking = 100
+        pair.player1.save()
+        p1_pk = pair.player1.pk
+
+        payload = {
+            "player1": {
+                "last_name": pair.player1.last_name,
+                "first_name": pair.player1.first_name,
+                "license_number": pair.player1.license_number,
+                "phone": pair.player1.phone,
+                "ranking": 999,
+            },
+        }
+        response = auth_client.patch(
+            pair_detail_url(tournament.id, pair.id), data=payload, format="json"
+        )
+        assert response.status_code == 200
+
+        pair.player1.refresh_from_db()
+        assert pair.player1.ranking == 999
+
+        # FFT must not have been called with force=True for player1
+        for call in calls:
+            if call["force"]:
+                pks = {p.pk for p in call["players"]}
+                assert p1_pk not in pks, (
+                    "fill_rankings_for_players called with force=True for player1 "
+                    "even though ranking was explicitly provided"
+                )
+
+    def test_patch_explicit_ranking_player2_not_overwritten_by_fft(
+        self, auth_client, tournament, monkeypatch
+    ):
+        """PATCH with only player2 ranking → ranking saved as-is, FFT not called force=True."""
+        calls = []
+
+        def fake_fill(players, tournament, force=False):
+            calls.append({"players": list(players), "force": force})
+
+        monkeypatch.setattr(
+            "apps.players.serializers.fill_rankings_for_players", fake_fill
+        )
+
+        pair = PairFactory(tournament=tournament)
+        pair.player2.ranking = 200
+        pair.player2.save()
+        p2_pk = pair.player2.pk
+
+        payload = {
+            "player2": {
+                "last_name": pair.player2.last_name,
+                "first_name": pair.player2.first_name,
+                "license_number": pair.player2.license_number,
+                "phone": pair.player2.phone,
+                "ranking": 888,
+            },
+        }
+        response = auth_client.patch(
+            pair_detail_url(tournament.id, pair.id), data=payload, format="json"
+        )
+        assert response.status_code == 200
+
+        pair.player2.refresh_from_db()
+        assert pair.player2.ranking == 888
+
+        for call in calls:
+            if call["force"]:
+                pks = {p.pk for p in call["players"]}
+                assert p2_pk not in pks, (
+                    "fill_rankings_for_players called with force=True for player2 "
+                    "even though ranking was explicitly provided"
+                )
+
+    def test_patch_name_changed_without_ranking_triggers_fft_force(
+        self, auth_client, tournament, monkeypatch
+    ):
+        """PATCH with changed last_name but no explicit ranking → FFT called force=True."""
+        calls = []
+
+        def fake_fill(players, tournament, force=False):
+            calls.append({"players": list(players), "force": force})
+
+        monkeypatch.setattr(
+            "apps.players.serializers.fill_rankings_for_players", fake_fill
+        )
+
+        pair = PairFactory(tournament=tournament)
+        pair.player1.ranking = 300
+        pair.player1.save()
+        p1_pk = pair.player1.pk
+
+        payload = {
+            "player1": {
+                "last_name": "NouveauNom",
+                "first_name": pair.player1.first_name,
+                "license_number": pair.player1.license_number,
+                "phone": pair.player1.phone,
+                # no "ranking" key → not explicitly provided
+            },
+        }
+        response = auth_client.patch(
+            pair_detail_url(tournament.id, pair.id), data=payload, format="json"
+        )
+        assert response.status_code == 200
+
+        # FFT must have been called with force=True for player1
+        force_true_calls = [c for c in calls if c["force"] is True]
+        assert force_true_calls, (
+            "fill_rankings_for_players was never called with force=True "
+            "despite player1 last_name being changed"
+        )
+        force_pks = {p.pk for p in force_true_calls[0]["players"]}
+        assert p1_pk in force_pks
+
+    def test_patch_name_changed_with_explicit_ranking_keeps_manual_ranking(
+        self, auth_client, tournament, monkeypatch
+    ):
+        """PATCH with changed name AND explicit ranking → manual ranking kept, FFT skipped."""
+        calls = []
+
+        def fake_fill(players, tournament, force=False):
+            calls.append({"players": list(players), "force": force})
+
+        monkeypatch.setattr(
+            "apps.players.serializers.fill_rankings_for_players", fake_fill
+        )
+
+        pair = PairFactory(tournament=tournament)
+        pair.player1.ranking = 300
+        pair.player1.save()
+        p1_pk = pair.player1.pk
+
+        payload = {
+            "player1": {
+                "last_name": "NomModifie",
+                "first_name": pair.player1.first_name,
+                "license_number": pair.player1.license_number,
+                "phone": pair.player1.phone,
+                "ranking": 777,
+            },
+        }
+        response = auth_client.patch(
+            pair_detail_url(tournament.id, pair.id), data=payload, format="json"
+        )
+        assert response.status_code == 200
+
+        pair.player1.refresh_from_db()
+        assert pair.player1.ranking == 777
+
+        for call in calls:
+            if call["force"]:
+                pks = {p.pk for p in call["players"]}
+                assert p1_pk not in pks, (
+                    "fill_rankings_for_players called with force=True for player1 "
+                    "even though ranking was explicitly provided"
+                )
+
+    def test_put_name_changed_ranking_same_value_triggers_fft_force(
+        self, auth_client, tournament, monkeypatch
+    ):
+        """PUT with name changed + ranking sent but same value as DB → FFT called force=True.
+
+        This is the bug case: with PUT all fields are always in the payload.
+        'ranking' being present does not mean it was intentionally changed.
+        Only a ranking value that DIFFERS from the current DB value is considered explicit.
+        """
+        calls = []
+
+        def fake_fill(players, tournament, force=False):
+            calls.append({"players": list(players), "force": force})
+
+        monkeypatch.setattr(
+            "apps.players.serializers.fill_rankings_for_players", fake_fill
+        )
+
+        pair = PairFactory(tournament=tournament)
+        pair.player1.ranking = 300
+        pair.player1.save()
+        p1_pk = pair.player1.pk
+
+        # PUT with the same ranking value (300) but a changed name.
+        # The ranking should NOT be treated as explicit because value == DB value.
+        # FFT must be called with force=True because the name changed.
+        payload = {
+            "player1": {
+                "last_name": "NomDifferent",
+                "first_name": pair.player1.first_name,
+                "license_number": pair.player1.license_number,
+                "phone": pair.player1.phone,
+                "ranking": 300,  # same as DB — not an explicit change
+            },
+            "player2": {
+                "last_name": pair.player2.last_name,
+                "first_name": pair.player2.first_name,
+                "license_number": pair.player2.license_number,
+                "phone": pair.player2.phone,
+                "ranking": pair.player2.ranking,  # same as DB
+            },
+        }
+        response = auth_client.put(
+            pair_detail_url(tournament.id, pair.id), data=payload, format="json"
+        )
+        assert response.status_code == 200
+
+        # FFT must have been called with force=True for player1 (name changed)
+        force_true_calls = [c for c in calls if c["force"] is True]
+        assert force_true_calls, (
+            "fill_rankings_for_players was never called with force=True "
+            "despite player1 name being changed (ranking was same value as DB)"
+        )
+        force_pks = {p.pk for p in force_true_calls[0]["players"]}
+        assert p1_pk in force_pks, (
+            "player1 not in the force=True FFT call despite name change"
+        )
+
+    def test_put_name_changed_ranking_different_value_keeps_manual_ranking(
+        self, auth_client, tournament, monkeypatch
+    ):
+        """PUT with name changed + ranking sent with a DIFFERENT value → manual ranking kept, FFT skipped.
+
+        When the ranking value differs from DB, the caller intentionally changed it.
+        FFT must not overwrite that explicit choice even if the name also changed.
+        """
+        calls = []
+
+        def fake_fill(players, tournament, force=False):
+            calls.append({"players": list(players), "force": force})
+
+        monkeypatch.setattr(
+            "apps.players.serializers.fill_rankings_for_players", fake_fill
+        )
+
+        pair = PairFactory(tournament=tournament)
+        pair.player1.ranking = 300
+        pair.player1.save()
+        p1_pk = pair.player1.pk
+
+        # PUT with a DIFFERENT ranking value (999) AND a changed name.
+        # The ranking IS explicit because value != DB value → FFT must be skipped.
+        payload = {
+            "player1": {
+                "last_name": "NomDifferent",
+                "first_name": pair.player1.first_name,
+                "license_number": pair.player1.license_number,
+                "phone": pair.player1.phone,
+                "ranking": 999,  # different from DB (300) → explicit change
+            },
+            "player2": {
+                "last_name": pair.player2.last_name,
+                "first_name": pair.player2.first_name,
+                "license_number": pair.player2.license_number,
+                "phone": pair.player2.phone,
+                "ranking": pair.player2.ranking,
+            },
+        }
+        response = auth_client.put(
+            pair_detail_url(tournament.id, pair.id), data=payload, format="json"
+        )
+        assert response.status_code == 200
+
+        pair.player1.refresh_from_db()
+        assert pair.player1.ranking == 999
+
+        # FFT must NOT have been called with force=True for player1
+        for call in calls:
+            if call["force"]:
+                pks = {p.pk for p in call["players"]}
+                assert p1_pk not in pks, (
+                    "fill_rankings_for_players called with force=True for player1 "
+                    "even though ranking was explicitly changed to a different value"
+                )

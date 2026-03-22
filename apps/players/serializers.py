@@ -130,9 +130,40 @@ class PairSerializer(serializers.ModelSerializer):
 
         return Pair.objects.create(player1=player1, player2=player2, **validated_data)
 
+    @staticmethod
+    def _ranking_changed(player_data: dict, original_ranking: int | None) -> bool:
+        """Return True if the payload contains a 'ranking' value that differs from the DB.
+
+        A ranking is considered an intentional override only when its value
+        actually changes.  This distinction matters for PUT requests where all
+        fields are always present in the payload — a ranking key whose value
+        matches the DB is NOT an explicit override.
+        """
+        if "ranking" not in player_data:
+            return False
+        return player_data["ranking"] != original_ranking
+
+    @staticmethod
+    def _name_changed(
+        player_data: dict, original_last: str, original_first: str
+    ) -> bool:
+        """Return True if last_name or first_name differs from the original DB values."""
+        return (
+            player_data.get("last_name", original_last) != original_last
+            or player_data.get("first_name", original_first) != original_first
+        )
+
     def update(self, instance: Pair, validated_data: dict) -> Pair:
         player1_data = validated_data.pop("player1", None)
         player2_data = validated_data.pop("player2", None)
+
+        # Snapshot names AND rankings BEFORE updating so we can detect changes below.
+        p1_original_last = instance.player1.last_name
+        p1_original_first = instance.player1.first_name
+        p1_original_ranking = instance.player1.ranking
+        p2_original_last = instance.player2.last_name
+        p2_original_first = instance.player2.first_name
+        p2_original_ranking = instance.player2.ranking
 
         if player1_data:
             self._update_player(instance.player1, player1_data)
@@ -141,22 +172,49 @@ class PairSerializer(serializers.ModelSerializer):
 
         instance.player1.refresh_from_db()
         instance.player2.refresh_from_db()
-        updated_players = []
-        if player1_data:
-            updated_players.append(instance.player1)
-        if player2_data:
-            updated_players.append(instance.player2)
-        updated_pks = {p.pk for p in updated_players}
-        unchanged_players = [
-            p for p in [instance.player1, instance.player2] if p.pk not in updated_pks
-        ]
-        # force=True on updated players: any field change (including last_name /
-        # first_name) may have altered their identity, so we re-resolve their FFT
-        # ranking unconditionally. Players whose data was NOT touched in this
-        # request are passed with force=False so manually-set rankings are kept.
-        self._fill_rankings(updated_players, force=True)
-        self._fill_rankings(unchanged_players, force=False)
-        should_recalculate = bool(updated_players) or instance.weight is None
+
+        # Classify each updated player into one of three buckets:
+        #   - ranking_explicit: caller sent a ranking value that DIFFERS from the
+        #                       current DB value → skip FFT entirely (intentional change)
+        #   - name_changed:     name changed without explicit ranking change → force=True
+        #   - soft_update:      other fields only → force=False
+        #
+        # Note: with PUT all fields are always present in the payload.  Checking
+        # only for the presence of the "ranking" key (old logic) would incorrectly
+        # mark an unchanged ranking as explicit, preventing the FFT re-fetch when
+        # the name changes.  Comparing the value against the DB snapshot is the
+        # only reliable way to detect an intentional ranking override.
+        ranking_explicit_players: list[Player] = []
+        force_players: list[Player] = []
+        soft_players: list[Player] = []
+        unchanged_players: list[Player] = []
+
+        originals = {
+            instance.player1.pk: (p1_original_last, p1_original_first, p1_original_ranking),
+            instance.player2.pk: (p2_original_last, p2_original_first, p2_original_ranking),
+        }
+
+        for player, player_data in [
+            (instance.player1, player1_data),
+            (instance.player2, player2_data),
+        ]:
+            orig_last, orig_first, orig_ranking = originals[player.pk]
+            if player_data is None:
+                unchanged_players.append(player)
+            elif self._ranking_changed(player_data, orig_ranking):
+                ranking_explicit_players.append(player)
+            elif self._name_changed(player_data, orig_last, orig_first):
+                force_players.append(player)
+            else:
+                soft_players.append(player)
+
+        # Players with explicit ranking: already saved via _update_player, no FFT.
+        # Players with name change: re-fetch FFT (may overwrite old stale ranking).
+        # Players with soft update or no update: keep existing ranking.
+        self._fill_rankings(force_players, force=True)
+        self._fill_rankings(soft_players + unchanged_players, force=False)
+
+        should_recalculate = bool(player1_data or player2_data) or instance.weight is None
         if should_recalculate:
             calculated = self._compute_weight(instance.player1, instance.player2)
             if calculated is not None:

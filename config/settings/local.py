@@ -57,3 +57,33 @@ REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = [  # noqa: F405
 # INSTALLED_APPS += ["debug_toolbar"]
 # MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
 # INTERNAL_IPS = ["127.0.0.1"]
+
+# ---------------------------------------------------------------------------
+# Logging — SQL queries
+# ---------------------------------------------------------------------------
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "sql": {
+            "format": "[SQL] %(duration)s ms — %(sql)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+        "sql_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "sql",
+        },
+    },
+    "loggers": {
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+    },
+}

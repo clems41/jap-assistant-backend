@@ -6,6 +6,7 @@ api_v1_patterns = [
     path("auth/", include("apps.users.urls")),
     path("tournaments/", include("apps.tournaments.urls")),
     path("tournaments/<int:tournament_id>/pairs/", include("apps.players.urls")),
+    path("tournaments/<int:tournament_id>/bracket/", include("apps.brackets.urls")),
 ]
 
 urlpatterns = [

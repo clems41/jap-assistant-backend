@@ -28,6 +28,12 @@ class BracketSlot(TimeStampedModel):
     )
     slot_title = models.CharField(max_length=20)
     score = models.CharField(max_length=50, blank=True, null=True)
+    game_format = models.CharField(
+        max_length=2,
+        choices=Tournament.GameFormat.choices,
+        blank=True,
+        null=True,
+    )
     pair = models.ForeignKey(
         Pair,
         on_delete=models.CASCADE,

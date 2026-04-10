@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.players.models import Pair
+from apps.tournaments.models import Tournament
 
 from .models import BracketSlot, BracketState, DIMENSION_CHOICES
 
@@ -29,7 +30,7 @@ class BracketSlotReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BracketSlot
-        fields = ["slot_title", "pair", "score"]
+        fields = ["slot_title", "pair", "score", "game_format"]
 
 
 class BracketStateSerializer(serializers.ModelSerializer):
@@ -54,11 +55,21 @@ class BracketSlotWriteSerializer(serializers.Serializer):
     score = serializers.CharField(
         max_length=50, required=False, allow_blank=True, allow_null=True, default=None
     )
+    game_format = serializers.ChoiceField(
+        choices=Tournament.GameFormat.choices,
+        required=False,
+        allow_null=True,
+        default=None,
+    )
 
     def validate(self, attrs: dict) -> dict:
         if attrs.get("score") and not attrs.get("pair_id"):
             raise serializers.ValidationError(
                 {"score": "Un score ne peut être saisi que si une paire est renseignée."}
+            )
+        if attrs.get("score") and not attrs.get("game_format"):
+            raise serializers.ValidationError(
+                {"score": "Un score ne peut être saisi que si un format de jeu est renseigné."}
             )
         return attrs
 

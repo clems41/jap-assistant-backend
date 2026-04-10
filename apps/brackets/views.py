@@ -84,6 +84,7 @@ class BracketStateView(TournamentScopedMixin, APIView):
                     slot_title=slot["slot_title"],
                     pair_id=slot["pair_id"],
                     score=slot.get("score"),
+                    game_format=slot.get("game_format"),
                 )
                 for slot in data["slots"]
             ])

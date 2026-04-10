@@ -259,14 +259,15 @@ class TestPutBracket:
         payload = {
             "dimension": 16,
             "nb_top_seeds": 0,
-            "slots": [{"slot_title": "QF #1", "pair_id": pair.pk, "score": "6/3 6/4"}],
+            "slots": [{"slot_title": "QF #1", "pair_id": pair.pk, "score": "6/3 6/4", "game_format": "A1"}],
         }
         response = client.put(bracket_url(tournament.pk), payload, format="json")
         assert response.status_code == 200
         slot = response.json()["slots"][0]
         assert slot["score"] == "6/3 6/4"
-        from apps.brackets.models import BracketSlot
+        assert slot["game_format"] == "A1"
         assert BracketSlot.objects.get(slot_title="QF #1").score == "6/3 6/4"
+        assert BracketSlot.objects.get(slot_title="QF #1").game_format == "A1"
 
     @pytest.mark.django_db
     def test_put_slot_without_score_has_null_score(self, client, tournament):
@@ -294,3 +295,83 @@ class TestPutBracket:
         assert response2.status_code == 200
         assert BracketState.objects.filter(tournament=tournament).count() == 1
         assert BracketSlot.objects.filter(bracket_state__tournament=tournament).count() == 1
+
+
+# ---------------------------------------------------------------------------
+# game_format field on BracketSlot
+# ---------------------------------------------------------------------------
+
+
+class TestGetBracketGameFormat:
+    @pytest.mark.django_db
+    def test_slot_includes_game_format_field_as_none_when_not_set(self, client, tournament):
+        bracket = BracketStateFactory(tournament=tournament)
+        pair = PairFactory(tournament=tournament)
+        BracketSlotFactory(bracket_state=bracket, slot_title="R16 #1", pair=pair)
+        response = client.get(bracket_url(tournament.pk))
+        assert response.status_code == 200
+        slot = response.json()["slots"][0]
+        assert "game_format" in slot
+        assert slot["game_format"] is None
+
+    @pytest.mark.django_db
+    def test_slot_returns_game_format_when_set(self, client, tournament):
+        bracket = BracketStateFactory(tournament=tournament)
+        pair = PairFactory(tournament=tournament)
+        BracketSlotFactory(bracket_state=bracket, slot_title="QF #1", pair=pair, game_format="A1")
+        response = client.get(bracket_url(tournament.pk))
+        assert response.status_code == 200
+        assert response.json()["slots"][0]["game_format"] == "A1"
+
+
+class TestPutBracketGameFormat:
+    @pytest.mark.django_db
+    def test_put_saves_game_format_correctly(self, client, tournament):
+        pair = PairFactory(tournament=tournament)
+        payload = {
+            "dimension": 16,
+            "nb_top_seeds": 0,
+            "slots": [{"slot_title": "QF #1", "pair_id": pair.pk, "score": "6/3 6/4", "game_format": "B1"}],
+        }
+        response = client.put(bracket_url(tournament.pk), payload, format="json")
+        assert response.status_code == 200
+        assert response.json()["slots"][0]["game_format"] == "B1"
+        assert BracketSlot.objects.get(slot_title="QF #1").game_format == "B1"
+
+    @pytest.mark.django_db
+    def test_put_with_score_but_no_game_format_returns_400(self, client, tournament):
+        pair = PairFactory(tournament=tournament)
+        payload = {
+            "dimension": 16,
+            "nb_top_seeds": 0,
+            "slots": [{"slot_title": "QF #1", "pair_id": pair.pk, "score": "6/3 6/4"}],
+        }
+        response = client.put(bracket_url(tournament.pk), payload, format="json")
+        assert response.status_code == 400
+        assert "score" in response.json()["fields"]["slots"][0]
+
+    @pytest.mark.django_db
+    def test_put_with_game_format_but_no_score_returns_200(self, client, tournament):
+        pair = PairFactory(tournament=tournament)
+        payload = {
+            "dimension": 16,
+            "nb_top_seeds": 0,
+            "slots": [{"slot_title": "QF #1", "pair_id": pair.pk, "game_format": "C2"}],
+        }
+        response = client.put(bracket_url(tournament.pk), payload, format="json")
+        assert response.status_code == 200
+        assert response.json()["slots"][0]["game_format"] == "C2"
+        assert response.json()["slots"][0]["score"] is None
+
+    @pytest.mark.django_db
+    def test_put_without_game_format_and_without_score_returns_200(self, client, tournament):
+        pair = PairFactory(tournament=tournament)
+        payload = {
+            "dimension": 16,
+            "nb_top_seeds": 0,
+            "slots": [{"slot_title": "R16 #1", "pair_id": pair.pk}],
+        }
+        response = client.put(bracket_url(tournament.pk), payload, format="json")
+        assert response.status_code == 200
+        assert response.json()["slots"][0]["game_format"] is None
+        assert response.json()["slots"][0]["score"] is None

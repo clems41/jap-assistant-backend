@@ -105,6 +105,25 @@ class TestGetBracket:
         assert "weight" in slot["pair"]
 
     @pytest.mark.django_db
+    def test_slot_includes_score_field(self, client, tournament):
+        bracket = BracketStateFactory(tournament=tournament)
+        pair = PairFactory(tournament=tournament)
+        BracketSlotFactory(bracket_state=bracket, slot_title="R16 #1", pair=pair)
+        response = client.get(bracket_url(tournament.pk))
+        assert response.status_code == 200
+        assert "score" in response.json()["slots"][0]
+        assert response.json()["slots"][0]["score"] is None
+
+    @pytest.mark.django_db
+    def test_slot_score_returned_when_set(self, client, tournament):
+        bracket = BracketStateFactory(tournament=tournament)
+        pair = PairFactory(tournament=tournament)
+        BracketSlotFactory(bracket_state=bracket, slot_title="QF #1", pair=pair, score="6/3 6/4")
+        response = client.get(bracket_url(tournament.pk))
+        assert response.status_code == 200
+        assert response.json()["slots"][0]["score"] == "6/3 6/4"
+
+    @pytest.mark.django_db
     def test_response_includes_id(self, client, tournament):
         bracket = BracketStateFactory(tournament=tournament)
         response = client.get(bracket_url(tournament.pk))
@@ -233,6 +252,33 @@ class TestPutBracket:
         assert len(data["slots"]) == 1
         assert data["slots"][0]["slot_title"] == "R32 #1"
         assert BracketSlot.objects.filter(bracket_state__tournament=tournament).count() == 1
+
+    @pytest.mark.django_db
+    def test_put_slot_with_score_saves_correctly(self, client, tournament):
+        pair = PairFactory(tournament=tournament)
+        payload = {
+            "dimension": 16,
+            "nb_top_seeds": 0,
+            "slots": [{"slot_title": "QF #1", "pair_id": pair.pk, "score": "6/3 6/4"}],
+        }
+        response = client.put(bracket_url(tournament.pk), payload, format="json")
+        assert response.status_code == 200
+        slot = response.json()["slots"][0]
+        assert slot["score"] == "6/3 6/4"
+        from apps.brackets.models import BracketSlot
+        assert BracketSlot.objects.get(slot_title="QF #1").score == "6/3 6/4"
+
+    @pytest.mark.django_db
+    def test_put_slot_without_score_has_null_score(self, client, tournament):
+        pair = PairFactory(tournament=tournament)
+        payload = {
+            "dimension": 16,
+            "nb_top_seeds": 0,
+            "slots": [{"slot_title": "QF #1", "pair_id": pair.pk}],
+        }
+        response = client.put(bracket_url(tournament.pk), payload, format="json")
+        assert response.status_code == 200
+        assert response.json()["slots"][0]["score"] is None
 
     @pytest.mark.django_db
     def test_idempotent(self, client, tournament):

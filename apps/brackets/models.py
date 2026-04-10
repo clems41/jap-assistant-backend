@@ -27,6 +27,7 @@ class BracketSlot(TimeStampedModel):
         related_name="slots",
     )
     slot_title = models.CharField(max_length=20)
+    score = models.CharField(max_length=50, blank=True, null=True)
     pair = models.ForeignKey(
         Pair,
         on_delete=models.CASCADE,

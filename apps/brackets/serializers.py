@@ -29,7 +29,7 @@ class BracketSlotReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BracketSlot
-        fields = ["slot_title", "pair"]
+        fields = ["slot_title", "pair", "score"]
 
 
 class BracketStateSerializer(serializers.ModelSerializer):
@@ -51,6 +51,16 @@ VALID_DIMENSIONS = {v for v, _ in DIMENSION_CHOICES}
 class BracketSlotWriteSerializer(serializers.Serializer):
     slot_title = serializers.CharField(max_length=20)
     pair_id = serializers.IntegerField()
+    score = serializers.CharField(
+        max_length=50, required=False, allow_blank=True, allow_null=True, default=None
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        if attrs.get("score") and not attrs.get("pair_id"):
+            raise serializers.ValidationError(
+                {"score": "Un score ne peut être saisi que si une paire est renseignée."}
+            )
+        return attrs
 
 
 class BracketStateWriteSerializer(serializers.Serializer):

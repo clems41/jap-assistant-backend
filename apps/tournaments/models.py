@@ -56,6 +56,13 @@ class Tournament(TimeStampedModel):
     class Configuration(models.TextChoices):
         TMC = "TMC", "Tournoi Multi Chance (TMC)"
 
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Brouillon"
+        SET = "SET", "Configuré"
+        READY = "READY", "Prêt"
+        STARTED = "STARTED", "En cours"
+        FINISHED = "FINISHED", "Terminé"
+
     GAME_FORMAT_DEFAULT_DURATIONS: dict[str, int] = {
         "A1": 100,
         "A2": 90,
@@ -83,6 +90,11 @@ class Tournament(TimeStampedModel):
     game_format = models.CharField(max_length=2, choices=GameFormat.choices, blank=True, default="")
     configuration = models.CharField(max_length=20, choices=Configuration.choices, null=True, blank=True)
     estimated_match_duration = models.PositiveSmallIntegerField(null=True, blank=True)
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
 
     class Meta:
         ordering = ["start_date", "name"]
@@ -91,6 +103,59 @@ class Tournament(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.name
+
+    def recompute_status(self) -> None:
+        """Recompute and persist the tournament status based on current state.
+
+        Never downgrades STARTED or FINISHED — those are terminal states
+        managed outside this method.
+        """
+        if self.status in (self.Status.STARTED, self.Status.FINISHED):
+            return
+
+        new_status = self._compute_status()
+        if new_status != self.status:
+            self.status = new_status
+            self.save(update_fields=["status", "updated_at"])
+
+    def _compute_status(self) -> str:
+        """Return the status that reflects the current data, without persisting."""
+        if not self._conditions_for_set_are_met():
+            return self.Status.DRAFT
+
+        if self._all_pairs_are_in_bracket():
+            return self.Status.READY
+
+        return self.Status.SET
+
+    def _conditions_for_set_are_met(self) -> bool:
+        """Return True when the tournament has >= 2 fully weighted pairs,
+        a configuration and a game_format."""
+        if not self.configuration or not self.game_format:
+            return False
+
+        pairs = self.pairs.all()
+        if pairs.count() < 2:
+            return False
+
+        return not pairs.filter(weight__isnull=True).exists()
+
+    def _all_pairs_are_in_bracket(self) -> bool:
+        """Return True when every pair of the tournament appears exactly once
+        in the associated BracketState."""
+        try:
+            bracket_state = self.bracket_state  # OneToOne — raises if absent
+        except self.__class__.bracket_state.RelatedObjectDoesNotExist:
+            return False
+
+        pair_ids = set(self.pairs.values_list("id", flat=True))
+        if not pair_ids:
+            return False
+
+        slotted_pair_ids = set(
+            bracket_state.slots.values_list("pair_id", flat=True)
+        )
+        return pair_ids == slotted_pair_ids
 
 
 class TimeSlot(TimeStampedModel):

@@ -18,10 +18,11 @@ class TournamentSerializer(serializers.ModelSerializer):
             "game_format",
             "configuration",
             "estimated_match_duration",
+            "status",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "owner", "created_at", "updated_at"]
+        read_only_fields = ["id", "owner", "status", "created_at", "updated_at"]
 
 
 class LastLeagueSerializer(serializers.Serializer):

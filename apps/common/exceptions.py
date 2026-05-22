@@ -20,8 +20,15 @@ from typing import Any
 
 from django.conf import settings
 from rest_framework import status
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
+
+
+class ConflictError(APIException):
+    status_code = 409
+    default_detail = "Conflict."
+    default_code = "conflict"
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +38,7 @@ _USER_MESSAGES: dict[int, str] = {
     403: "Vous n'avez pas la permission d'effectuer cette action.",
     404: "La ressource demandée est introuvable.",
     405: "Méthode HTTP non autorisée.",
+    409: "Un conflit existe avec l'état actuel de la ressource.",
     429: "Trop de requêtes. Veuillez réessayer plus tard.",
     500: "Une erreur interne est survenue. Veuillez réessayer plus tard.",
 }

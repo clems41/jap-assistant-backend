@@ -119,12 +119,13 @@ class Tournament(TimeStampedModel):
             self.save(update_fields=["status", "updated_at"])
 
     def _compute_status(self) -> str:
-        """Return the status that reflects the current data, without persisting."""
+        """Return the status that reflects the current data, without persisting.
+
+        Note: SET → READY transition is not yet implemented.
+        READY remains in Status.choices for future use.
+        """
         if not self._conditions_for_set_are_met():
             return self.Status.DRAFT
-
-        if self._all_pairs_are_in_bracket():
-            return self.Status.READY
 
         return self.Status.SET
 
@@ -139,23 +140,6 @@ class Tournament(TimeStampedModel):
             return False
 
         return not pairs.filter(weight__isnull=True).exists()
-
-    def _all_pairs_are_in_bracket(self) -> bool:
-        """Return True when every pair of the tournament appears exactly once
-        in the associated BracketState."""
-        try:
-            bracket_state = self.bracket_state  # OneToOne — raises if absent
-        except self.__class__.bracket_state.RelatedObjectDoesNotExist:
-            return False
-
-        pair_ids = set(self.pairs.values_list("id", flat=True))
-        if not pair_ids:
-            return False
-
-        slotted_pair_ids = set(
-            bracket_state.slots.values_list("pair_id", flat=True)
-        )
-        return pair_ids == slotted_pair_ids
 
 
 class TimeSlot(TimeStampedModel):

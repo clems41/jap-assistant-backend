@@ -6,30 +6,30 @@ from apps.tournaments.models import Tournament
 
 class Round(models.TextChoices):
     FINALE = "FINALE", "Finale"
-    DEMI_FINALE = "DEMI_FINALE", "Demi-finale"
-    QUART_DE_FINALE = "QUART_DE_FINALE", "Quart de finale"
-    HUITIEME_DE_FINALE = "HUITIEME_DE_FINALE", "Huitième de finale"
-    SEIZIEME_DE_FINALE = "SEIZIEME_DE_FINALE", "Seizième de finale"
-    TRENTE_DEUXIEME_DE_FINALE = "TRENTE_DEUXIEME_DE_FINALE", "32ème de finale"
+    DEMIE_FINALE = "DEMIE_FINALE", "Demies"
+    QUART_DE_FINALE = "QUART_DE_FINALE", "Quarts"
+    HUITIEME_DE_FINALE = "HUITIEME_DE_FINALE", "Huitièmes"
+    SEIZIEME_DE_FINALE = "SEIZIEME_DE_FINALE", "Seizièmes"
+    TRENTE_DEUXIEME_DE_FINALE = "TRENTE_DEUXIEME_DE_FINALE", "32èmes"
 
 
 ROUNDS_BY_DIMENSION: dict[int, list[str]] = {
     8: [
         Round.QUART_DE_FINALE,
-        Round.DEMI_FINALE,
+        Round.DEMIE_FINALE,
         Round.FINALE,
     ],
     16: [
         Round.HUITIEME_DE_FINALE,
         Round.QUART_DE_FINALE,
-        Round.DEMI_FINALE,
+        Round.DEMIE_FINALE,
         Round.FINALE,
     ],
     32: [
         Round.SEIZIEME_DE_FINALE,
         Round.HUITIEME_DE_FINALE,
         Round.QUART_DE_FINALE,
-        Round.DEMI_FINALE,
+        Round.DEMIE_FINALE,
         Round.FINALE,
     ],
     64: [
@@ -37,7 +37,7 @@ ROUNDS_BY_DIMENSION: dict[int, list[str]] = {
         Round.SEIZIEME_DE_FINALE,
         Round.HUITIEME_DE_FINALE,
         Round.QUART_DE_FINALE,
-        Round.DEMI_FINALE,
+        Round.DEMIE_FINALE,
         Round.FINALE,
     ],
 }

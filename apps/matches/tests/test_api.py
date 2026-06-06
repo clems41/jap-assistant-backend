@@ -62,8 +62,8 @@ class TestBracketCreate:
 
         sf1 = root["child1"]
         sf2 = root["child2"]
-        assert sf1["round"] == "DEMI_FINALE"
-        assert sf2["round"] == "DEMI_FINALE"
+        assert sf1["round"] == "DEMIE_FINALE"
+        assert sf2["round"] == "DEMIE_FINALE"
         assert sf1["match_number"] == 1
         assert sf2["match_number"] == 2
 
@@ -124,7 +124,7 @@ class TestBracketCreate:
         root = resp.json()["root_match"]
         rounds = _collect_rounds(root)
         assert rounds.count("FINALE") == 1
-        assert rounds.count("DEMI_FINALE") == 2
+        assert rounds.count("DEMIE_FINALE") == 2
         assert rounds.count("QUART_DE_FINALE") == 4
         assert rounds.count("HUITIEME_DE_FINALE") == 8
 
@@ -135,7 +135,7 @@ class TestBracketCreate:
         )
         by_round = _collect_match_numbers_by_round(resp.json()["root_match"])
         assert sorted(by_round["FINALE"]) == [1]
-        assert sorted(by_round["DEMI_FINALE"]) == [1, 2]
+        assert sorted(by_round["DEMIE_FINALE"]) == [1, 2]
         assert sorted(by_round["QUART_DE_FINALE"]) == [1, 2, 3, 4]
         assert sorted(by_round["HUITIEME_DE_FINALE"]) == list(range(1, 9))
 

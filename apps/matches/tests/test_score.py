@@ -107,7 +107,7 @@ class TestMatchScorePatch:
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
 
-        child_match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="DEMI_FINALE", match_number=1)
+        child_match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="DEMIE_FINALE", match_number=1)
         parent_match = MatchFactory(bracket=bracket, round="FINALE", match_number=1, child1=child_match)
 
         resp = authenticated_client.patch(
@@ -125,7 +125,7 @@ class TestMatchScorePatch:
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
 
-        child_match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="DEMI_FINALE", match_number=2)
+        child_match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="DEMIE_FINALE", match_number=2)
         parent_match = MatchFactory(bracket=bracket, round="FINALE", match_number=1, child2=child_match)
 
         resp = authenticated_client.patch(

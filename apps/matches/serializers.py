@@ -18,11 +18,13 @@ class MatchSerializer(serializers.ModelSerializer):
             "match_number",
             "pair1",
             "pair2",
+            "winner_id",
             "game_format",
             "score",
             "child1",
             "child2",
         ]
+        read_only_fields = ["id", "round", "round_display", "match_number", "pair1", "pair2", "game_format", "child1", "child2"]
 
     def get_child1(self, obj: Match) -> dict | None:
         if obj.child1_id is None:
@@ -53,6 +55,31 @@ class BracketSerializer(serializers.ModelSerializer):
     def get_root_match(self, obj: Bracket) -> dict:
         root = obj.matches.get(round=Round.FINALE)
         return MatchSerializer(root).data
+
+
+class MatchScoreSerializer(serializers.Serializer):
+    score = serializers.CharField(max_length=50)
+    winner_id = serializers.IntegerField()
+
+    def validate(self, attrs: dict) -> dict:
+        match: Match = self.context["match"]
+
+        if match.pair1_id is None and match.pair2_id is None:
+            raise serializers.ValidationError(
+                ["Les paires du match ne sont pas encore définies."]
+            )
+
+        winner_id: int = attrs["winner_id"]
+        if winner_id not in (match.pair1_id, match.pair2_id):
+            raise serializers.ValidationError(
+                {
+                    "winner_id": [
+                        "Le vainqueur doit être l'une des deux paires du match."
+                    ]
+                }
+            )
+
+        return attrs
 
 
 class BracketGenerateSerializer(serializers.Serializer):

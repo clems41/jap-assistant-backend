@@ -101,6 +101,13 @@ class Match(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="parent_as_child2",
     )
+    winner = models.ForeignKey(
+        "players.Pair",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="won_matches",
+    )
 
     class Meta:
         ordering = ["round", "match_number"]

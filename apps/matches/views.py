@@ -10,10 +10,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.exceptions import ConflictError
+from apps.players.models import Pair
 from apps.tournaments.models import Tournament
 
 from .models import ROUNDS_BY_DIMENSION, Bracket, Match
-from .serializers import BracketGenerateSerializer, BracketSerializer
+from .serializers import (
+    BracketGenerateSerializer,
+    BracketSerializer,
+    MatchScoreSerializer,
+    MatchSerializer,
+)
 
 
 class TournamentScopedMixin:
@@ -118,3 +124,52 @@ class BracketView(TournamentScopedMixin, APIView):
             _generate_matches(bracket, tournament)
 
         return Response(BracketSerializer(bracket).data, status=status.HTTP_201_CREATED)
+
+
+def _propagate_winner(match: Match, winner: Pair) -> None:
+    parent_via_child1 = match.parent_as_child1.first()
+    if parent_via_child1 is not None:
+        parent_via_child1.pair1 = winner
+        parent_via_child1.save(update_fields=["pair1", "updated_at"])
+        return
+
+    parent_via_child2 = match.parent_as_child2.first()
+    if parent_via_child2 is not None:
+        parent_via_child2.pair2 = winner
+        parent_via_child2.save(update_fields=["pair2", "updated_at"])
+
+
+class MatchScoreView(TournamentScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=MatchScoreSerializer,
+        responses={200: MatchSerializer},
+        parameters=[
+            OpenApiParameter(name="tournament_id", location=OpenApiParameter.PATH, type=int),
+            OpenApiParameter(name="match_id", location=OpenApiParameter.PATH, type=int),
+        ],
+        summary="Saisir le score d'un match",
+        description=(
+            "Met à jour le score et le vainqueur d'un match. "
+            "Propage automatiquement le vainqueur au match parent si applicable."
+        ),
+    )
+    def patch(self, request: Request, tournament_id: int, match_id: int) -> Response:
+        tournament = self._tournament
+        match = get_object_or_404(Match, pk=match_id, bracket__tournament=tournament)
+
+        serializer = MatchScoreSerializer(data=request.data, context={"match": match})
+        serializer.is_valid(raise_exception=True)
+
+        winner_id: int = serializer.validated_data["winner_id"]
+        score: str = serializer.validated_data["score"]
+
+        winner = Pair.objects.get(pk=winner_id)
+        match.score = score
+        match.winner = winner
+        match.save(update_fields=["score", "winner", "updated_at"])
+
+        _propagate_winner(match, winner)
+
+        return Response(MatchSerializer(match).data)

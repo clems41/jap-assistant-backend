@@ -95,6 +95,7 @@ class Tournament(TimeStampedModel):
         choices=Status.choices,
         default=Status.DRAFT,
     )
+    pairs_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["start_date", "name"]

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import Bracket, Match, Round
@@ -36,6 +37,11 @@ class MatchSerializer(serializers.ModelSerializer):
         return MatchSerializer(child).data
 
 
+# Applied after class definition to resolve the self-referential forward reference.
+MatchSerializer.get_child1 = extend_schema_field(MatchSerializer)(MatchSerializer.get_child1)
+MatchSerializer.get_child2 = extend_schema_field(MatchSerializer)(MatchSerializer.get_child2)
+
+
 class BracketSerializer(serializers.ModelSerializer):
     root_match = serializers.SerializerMethodField()
 
@@ -43,6 +49,7 @@ class BracketSerializer(serializers.ModelSerializer):
         model = Bracket
         fields = ["id", "dimension", "nb_top_seeds", "root_match"]
 
+    @extend_schema_field(MatchSerializer)
     def get_root_match(self, obj: Bracket) -> dict:
         root = obj.matches.get(round=Round.FINALE)
         return MatchSerializer(root).data

@@ -1,6 +1,8 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.players.models import Pair
+
 from .models import Bracket, Match, Round
 
 
@@ -79,6 +81,79 @@ class MatchScoreSerializer(serializers.Serializer):
                 }
             )
 
+        return attrs
+
+
+class MatchPlacementItemSerializer(serializers.Serializer):
+    match_id = serializers.IntegerField()
+    pair1_id = serializers.IntegerField(allow_null=True)
+    pair2_id = serializers.IntegerField(allow_null=True)
+
+
+class BracketPlacementSerializer(serializers.Serializer):
+    placements = MatchPlacementItemSerializer(many=True)
+
+    def validate(self, attrs: dict) -> dict:
+        bracket: Bracket = self.context["bracket"]
+        tournament = self.context["tournament"]
+        placements: list[dict] = attrs["placements"]
+        requested_match_ids = {p["match_id"] for p in placements}
+
+        matches_map = {
+            m.pk: m
+            for m in Match.objects.filter(bracket=bracket, pk__in=requested_match_ids)
+        }
+
+        pair_ids_in_request: list[int] = []
+        for p in placements:
+            match = matches_map.get(p["match_id"])
+            if match is None:
+                raise serializers.ValidationError(
+                    {"match_id": [f"Le match {p['match_id']} n'appartient pas à ce tableau."]}
+                )
+            if match.score:
+                raise serializers.ValidationError(
+                    {"match_id": [f"Le match {p['match_id']} a déjà un score enregistré."]}
+                )
+            if p["pair1_id"] is not None and p["pair1_id"] == p["pair2_id"]:
+                raise serializers.ValidationError(
+                    ["Une paire ne peut pas être placée deux fois dans le même match."]
+                )
+            for pair_id in (p["pair1_id"], p["pair2_id"]):
+                if pair_id is not None:
+                    pair_ids_in_request.append(pair_id)
+
+        if pair_ids_in_request:
+            valid_pair_ids = set(
+                Pair.objects.filter(
+                    pk__in=pair_ids_in_request, tournament=tournament
+                ).values_list("pk", flat=True)
+            )
+            for pid in pair_ids_in_request:
+                if pid not in valid_pair_ids:
+                    raise serializers.ValidationError(
+                        {"pair_id": [f"La paire {pid} n'appartient pas à ce tournoi."]}
+                    )
+
+        if len(pair_ids_in_request) != len(set(pair_ids_in_request)):
+            raise serializers.ValidationError(
+                ["Une paire ne peut être placée qu'une seule fois dans le tableau."]
+            )
+
+        existing_pair_ids: set[int] = set()
+        for m in Match.objects.filter(bracket=bracket).exclude(pk__in=requested_match_ids):
+            if m.pair1_id:
+                existing_pair_ids.add(m.pair1_id)
+            if m.pair2_id:
+                existing_pair_ids.add(m.pair2_id)
+
+        overlap = set(pair_ids_in_request) & existing_pair_ids
+        if overlap:
+            raise serializers.ValidationError(
+                ["Une paire ne peut être placée qu'une seule fois dans le tableau."]
+            )
+
+        attrs["_matches"] = matches_map
         return attrs
 
 

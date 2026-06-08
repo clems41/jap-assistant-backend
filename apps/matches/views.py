@@ -16,6 +16,7 @@ from apps.tournaments.models import Tournament
 from .models import ROUNDS_BY_DIMENSION, Bracket, Match
 from .serializers import (
     BracketGenerateSerializer,
+    BracketPlacementSerializer,
     BracketSerializer,
     MatchScoreSerializer,
     MatchSerializer,
@@ -124,6 +125,45 @@ class BracketView(TournamentScopedMixin, APIView):
             _generate_matches(bracket, tournament)
 
         return Response(BracketSerializer(bracket).data, status=status.HTTP_201_CREATED)
+
+
+class BracketPlacementView(TournamentScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=BracketPlacementSerializer,
+        responses={200: BracketSerializer},
+        parameters=[
+            OpenApiParameter(name="tournament_id", location=OpenApiParameter.PATH, type=int),
+        ],
+        summary="Sauvegarder le placement des paires",
+        description=(
+            "Met à jour les paires dans les matchs du tableau. "
+            "Les paires ordinaires vont dans les matchs du 1er tour ; "
+            "les têtes de série peuvent être placées directement dans les tours suivants. "
+            "Seuls les matchs inclus dans la requête sont modifiés. "
+            "pair1_id / pair2_id peuvent être null pour dé-placer une paire."
+        ),
+    )
+    def patch(self, request: Request, tournament_id: int) -> Response:
+        tournament = self._tournament
+        bracket = get_object_or_404(Bracket, tournament=tournament)
+
+        serializer = BracketPlacementSerializer(
+            data=request.data,
+            context={"bracket": bracket, "tournament": tournament},
+        )
+        serializer.is_valid(raise_exception=True)
+
+        matches_map: dict = serializer.validated_data["_matches"]
+        with transaction.atomic():
+            for p in serializer.validated_data["placements"]:
+                match = matches_map[p["match_id"]]
+                match.pair1_id = p["pair1_id"]
+                match.pair2_id = p["pair2_id"]
+                match.save(update_fields=["pair1", "pair2", "updated_at"])
+
+        return Response(BracketSerializer(bracket).data)
 
 
 def _propagate_winner(match: Match, winner: Pair) -> None:

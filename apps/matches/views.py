@@ -126,6 +126,23 @@ class BracketView(TournamentScopedMixin, APIView):
 
         return Response(BracketSerializer(bracket).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        responses={204: None},
+        parameters=[
+            OpenApiParameter(name="tournament_id", location=OpenApiParameter.PATH, type=int),
+        ],
+        summary="Supprimer le tableau principal",
+        description=(
+            "Supprime le tableau principal et tous les matchs associés. "
+            "Après suppression, un nouveau tableau peut être généré avec une dimension différente."
+        ),
+    )
+    def delete(self, request: Request, tournament_id: int) -> Response:
+        tournament = self._tournament
+        bracket = get_object_or_404(Bracket, tournament=tournament)
+        bracket.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class BracketPlacementView(TournamentScopedMixin, APIView):
     permission_classes = [IsAuthenticated]

@@ -237,6 +237,58 @@ class TestBracketRetrieve:
         assert resp.status_code == 404
 
 
+@pytest.mark.django_db
+class TestBracketDelete:
+    def test_returns_204(self, authenticated_client, tournament):
+        authenticated_client.post(
+            _bracket_url(tournament.pk), {"dimension": 8, "nb_top_seeds": 2}, format="json"
+        )
+        resp = authenticated_client.delete(_bracket_url(tournament.pk))
+        assert resp.status_code == 204
+
+    def test_deletes_bracket_from_db(self, authenticated_client, tournament):
+        authenticated_client.post(
+            _bracket_url(tournament.pk), {"dimension": 8, "nb_top_seeds": 2}, format="json"
+        )
+        authenticated_client.delete(_bracket_url(tournament.pk))
+        assert Bracket.objects.filter(tournament=tournament).count() == 0
+
+    def test_deletes_all_matches_from_db(self, authenticated_client, tournament):
+        authenticated_client.post(
+            _bracket_url(tournament.pk), {"dimension": 8, "nb_top_seeds": 2}, format="json"
+        )
+        authenticated_client.delete(_bracket_url(tournament.pk))
+        assert Match.objects.filter(bracket__tournament=tournament).count() == 0
+
+    def test_404_no_bracket(self, authenticated_client, tournament):
+        resp = authenticated_client.delete(_bracket_url(tournament.pk))
+        assert resp.status_code == 404
+
+    def test_401_unauthenticated(self, client, tournament):
+        resp = client.delete(_bracket_url(tournament.pk))
+        assert resp.status_code == 401
+
+    def test_404_non_owner(self, authenticated_client, tournament):
+        authenticated_client.post(
+            _bracket_url(tournament.pk), {"dimension": 8, "nb_top_seeds": 2}, format="json"
+        )
+        other_client = APIClient()
+        other_client.force_authenticate(user=UserFactory())
+        resp = other_client.delete(_bracket_url(tournament.pk))
+        assert resp.status_code == 404
+
+    def test_can_regenerate_after_deletion(self, authenticated_client, tournament):
+        authenticated_client.post(
+            _bracket_url(tournament.pk), {"dimension": 8, "nb_top_seeds": 2}, format="json"
+        )
+        authenticated_client.delete(_bracket_url(tournament.pk))
+        resp = authenticated_client.post(
+            _bracket_url(tournament.pk), {"dimension": 16, "nb_top_seeds": 4}, format="json"
+        )
+        assert resp.status_code == 201
+        assert resp.json()["dimension"] == 16
+
+
 def _walk_nodes(node: dict | None):
     if node is None:
         return

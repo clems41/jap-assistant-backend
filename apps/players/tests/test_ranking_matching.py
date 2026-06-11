@@ -429,6 +429,58 @@ def test_weight_computed_when_pair_weight_is_none_and_players_already_ranked(
 
 
 # ---------------------------------------------------------------------------
+# Transition de statut DRAFT → SET
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_tournament_transitions_to_set_after_ranking_match():
+    from apps.players.services.ranking_matching_service import match_and_update_rankings
+
+    tournament = TournamentFactory(
+        gender=Tournament.Gender.MALE,
+        league=Tournament.League.ILE_DE_FRANCE,
+        game_format=Tournament.GameFormat.B1,
+        configuration=Tournament.Configuration.TMC,
+    )
+    player1 = PlayerFactory(ranking=None)
+    player2 = PlayerFactory(ranking=None)
+    player3 = PlayerFactory(ranking=None)
+    player4 = PlayerFactory(ranking=None)
+    FFTRankingFactory(
+        last_name=player1.last_name,
+        first_name=player1.first_name,
+        ranking=100,
+        gender=Tournament.Gender.MALE,
+    )
+    FFTRankingFactory(
+        last_name=player2.last_name,
+        first_name=player2.first_name,
+        ranking=200,
+        gender=Tournament.Gender.MALE,
+    )
+    FFTRankingFactory(
+        last_name=player3.last_name,
+        first_name=player3.first_name,
+        ranking=150,
+        gender=Tournament.Gender.MALE,
+    )
+    FFTRankingFactory(
+        last_name=player4.last_name,
+        first_name=player4.first_name,
+        ranking=250,
+        gender=Tournament.Gender.MALE,
+    )
+    PairFactory(tournament=tournament, player1=player1, player2=player2, weight=None)
+    PairFactory(tournament=tournament, player1=player3, player2=player4, weight=None)
+
+    match_and_update_rankings(tournament)
+
+    tournament.refresh_from_db()
+    assert tournament.status == Tournament.Status.SET
+
+
+# ---------------------------------------------------------------------------
 # Format de réponse
 # ---------------------------------------------------------------------------
 

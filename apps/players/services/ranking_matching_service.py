@@ -104,4 +104,5 @@ def match_and_update_rankings(tournament: Tournament) -> list[Pair]:
     if pairs_to_save:
         Pair.objects.bulk_update(pairs_to_save, ["weight", "updated_at"])
 
+    tournament.recompute_status()
     return pairs

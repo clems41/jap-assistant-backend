@@ -15,6 +15,19 @@ def _recompute_for_pair(pair) -> None:
 def register_signals() -> None:
     """Attach all signal handlers. Called once from TournamentsConfig.ready()."""
     from apps.players.models import Pair, Player
+    from apps.tournaments.models import Tournament
+
+    @receiver(
+        post_save,
+        sender=Tournament,
+        dispatch_uid="tournaments.tournament_post_save",
+    )
+    def on_tournament_saved(sender, instance, update_fields, **kwargs) -> None:
+        # Guard: recompute_status() saves with these exact fields — skip to avoid recursion
+        if update_fields and frozenset(update_fields) == frozenset(["status", "updated_at"]):
+            return
+        instance.recompute_status()
+
 
     @receiver(post_save, sender=Pair, dispatch_uid="tournaments.pair_post_save")
     def on_pair_saved(sender, instance, **kwargs) -> None:

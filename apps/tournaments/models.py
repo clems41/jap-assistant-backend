@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 from apps.common.models import TimeStampedModel
 
@@ -131,16 +132,21 @@ class Tournament(TimeStampedModel):
         return self.Status.SET
 
     def _conditions_for_set_are_met(self) -> bool:
-        """Return True when the tournament has >= 2 fully weighted pairs,
-        a configuration and a game_format."""
+        """Return True when the tournament has >= 4 fully weighted pairs
+        (all players ranked), a configuration and a game_format."""
         if not self.configuration or not self.game_format:
             return False
 
-        pairs = self.pairs.all()
-        if pairs.count() < 2:
+        pairs = self.pairs.select_related("player1", "player2")
+        if pairs.count() < 4:
             return False
 
-        return not pairs.filter(weight__isnull=True).exists()
+        if pairs.filter(weight__isnull=True).exists():
+            return False
+
+        return not pairs.filter(
+            Q(player1__ranking__isnull=True) | Q(player2__ranking__isnull=True)
+        ).exists()
 
 
 class TimeSlot(TimeStampedModel):

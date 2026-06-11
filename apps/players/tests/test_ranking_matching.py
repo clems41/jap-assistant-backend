@@ -443,36 +443,16 @@ def test_tournament_transitions_to_set_after_ranking_match():
         game_format=Tournament.GameFormat.B1,
         configuration=Tournament.Configuration.TMC,
     )
-    player1 = PlayerFactory(ranking=None)
-    player2 = PlayerFactory(ranking=None)
-    player3 = PlayerFactory(ranking=None)
-    player4 = PlayerFactory(ranking=None)
-    FFTRankingFactory(
-        last_name=player1.last_name,
-        first_name=player1.first_name,
-        ranking=100,
-        gender=Tournament.Gender.MALE,
-    )
-    FFTRankingFactory(
-        last_name=player2.last_name,
-        first_name=player2.first_name,
-        ranking=200,
-        gender=Tournament.Gender.MALE,
-    )
-    FFTRankingFactory(
-        last_name=player3.last_name,
-        first_name=player3.first_name,
-        ranking=150,
-        gender=Tournament.Gender.MALE,
-    )
-    FFTRankingFactory(
-        last_name=player4.last_name,
-        first_name=player4.first_name,
-        ranking=250,
-        gender=Tournament.Gender.MALE,
-    )
-    PairFactory(tournament=tournament, player1=player1, player2=player2, weight=None)
-    PairFactory(tournament=tournament, player1=player3, player2=player4, weight=None)
+    players = [PlayerFactory(ranking=None) for _ in range(8)]
+    for i, player in enumerate(players):
+        FFTRankingFactory(
+            last_name=player.last_name,
+            first_name=player.first_name,
+            ranking=100 + i * 50,
+            gender=Tournament.Gender.MALE,
+        )
+    for i in range(0, 8, 2):
+        PairFactory(tournament=tournament, player1=players[i], player2=players[i + 1], weight=None)
 
     match_and_update_rankings(tournament)
 

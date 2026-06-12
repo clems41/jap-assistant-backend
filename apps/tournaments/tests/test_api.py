@@ -502,10 +502,10 @@ class TestEnumConfigurations:
 
 
 # ---------------------------------------------------------------------------
-# Last league
+# Last information
 # ---------------------------------------------------------------------------
 
-LAST_LEAGUE_URL = "/api/v1/tournaments/last-league/"
+LAST_INFORMATION_URL = "/api/v1/tournaments/last-information/"
 
 # ---------------------------------------------------------------------------
 # Filters
@@ -782,48 +782,48 @@ class TestListTournamentsPageSize:
 
 
 @pytest.mark.django_db
-class TestLastLeague:
-    def test_last_league_unauthenticated_returns_401(self, api_client: APIClient) -> None:
-        """GET /tournaments/last-league requires authentication."""
-        response = api_client.get(LAST_LEAGUE_URL)
+class TestLastInformation:
+    def test_last_information_unauthenticated_returns_401(self, api_client: APIClient) -> None:
+        """GET /tournaments/last-information requires authentication."""
+        response = api_client.get(LAST_INFORMATION_URL)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_last_league_no_tournament_returns_null(
+    def test_last_information_no_tournament_returns_null(
         self, authenticated_client: APIClient
     ) -> None:
-        """When the user has no tournament, league must be null — not a 404."""
-        response = authenticated_client.get(LAST_LEAGUE_URL)
+        """When the user has no tournament, league and location must be null — not a 404."""
+        response = authenticated_client.get(LAST_INFORMATION_URL)
         assert response.status_code == status.HTTP_200_OK
-        assert response.data == {"league": None}
+        assert response.data == {"league": None, "location": None}
 
-    def test_last_league_returns_league_of_most_recent_tournament(
+    def test_last_information_returns_fields_of_most_recent_tournament(
         self, authenticated_client: APIClient, user
     ) -> None:
-        """Returns the league of the most recently created tournament."""
-        TournamentFactory(owner=user, league=Tournament.League.BRETAGNE)
-        TournamentFactory(owner=user, league=Tournament.League.NORMANDIE)
-        response = authenticated_client.get(LAST_LEAGUE_URL)
+        """Returns the league and location of the most recently created tournament."""
+        TournamentFactory(owner=user, league=Tournament.League.BRETAGNE, location="Rennes")
+        TournamentFactory(owner=user, league=Tournament.League.NORMANDIE, location="Rouen")
+        response = authenticated_client.get(LAST_INFORMATION_URL)
         assert response.status_code == status.HTTP_200_OK
-        # The last created (highest pk / latest created_at) has NORMANDIE
         assert response.data["league"] == Tournament.League.NORMANDIE
+        assert response.data["location"] == "Rouen"
 
-    def test_last_league_ignores_other_users_tournaments(
+    def test_last_information_ignores_other_users_tournaments(
         self, authenticated_client: APIClient, user, other_user
     ) -> None:
         """Only the authenticated user's tournaments are considered."""
-        TournamentFactory(owner=other_user, league=Tournament.League.BRETAGNE)
-        response = authenticated_client.get(LAST_LEAGUE_URL)
+        TournamentFactory(owner=other_user, league=Tournament.League.BRETAGNE, location="Rennes")
+        response = authenticated_client.get(LAST_INFORMATION_URL)
         assert response.status_code == status.HTTP_200_OK
-        assert response.data == {"league": None}
+        assert response.data == {"league": None, "location": None}
 
-    def test_last_league_response_shape(
+    def test_last_information_response_shape(
         self, authenticated_client: APIClient, user
     ) -> None:
-        """Response contains only the 'league' key."""
-        TournamentFactory(owner=user, league=Tournament.League.ILE_DE_FRANCE)
-        response = authenticated_client.get(LAST_LEAGUE_URL)
+        """Response contains 'league' and 'location' keys."""
+        TournamentFactory(owner=user, league=Tournament.League.ILE_DE_FRANCE, location="Paris")
+        response = authenticated_client.get(LAST_INFORMATION_URL)
         assert response.status_code == status.HTTP_200_OK
-        assert set(response.data.keys()) == {"league"}
+        assert set(response.data.keys()) == {"league", "location"}
 
 
 # ---------------------------------------------------------------------------

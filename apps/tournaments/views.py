@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 from apps.tournaments.models import TimeSlot, Tournament
 from apps.tournaments.permissions import IsOwner
 from apps.tournaments.serializers import (
-    LastLeagueSerializer,
+    LastInformationSerializer,
     TimeSlotSerializer,
     TournamentSerializer,
 )
@@ -180,21 +180,22 @@ class TournamentGameFormatDurationView(APIView):
         return Response(data)
 
 
-class LastLeagueView(APIView):
-    """Return the league of the most recently created tournament by the authenticated user."""
+class LastInformationView(APIView):
+    """Return the league and location of the most recently created tournament by the authenticated user."""
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses={200: LastLeagueSerializer})
+    @extend_schema(responses={200: LastInformationSerializer})
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         tournament = (
             Tournament.objects.filter(owner=request.user)
             .order_by("-created_at")
-            .only("league")
+            .only("league", "location")
             .first()
         )
         league = tournament.league if tournament is not None else None
-        return Response({"league": league})
+        location = tournament.location if tournament is not None else None
+        return Response({"league": league, "location": location})
 
 
 def _get_tournament_for_user(tournament_pk: int, user) -> Tournament:

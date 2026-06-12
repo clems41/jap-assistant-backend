@@ -1,7 +1,7 @@
 from django.urls import path
 
 from apps.tournaments.views import (
-    LastLeagueView,
+    LastInformationView,
     TimeSlotDetailView,
     TimeSlotListCreateView,
     TournamentCategoryEnumView,
@@ -22,8 +22,8 @@ urlpatterns = [
     path("enums/game-formats/", TournamentGameFormatEnumView.as_view(), name="tournament-enum-game-formats"),
     path("enums/game-format-durations/", TournamentGameFormatDurationView.as_view(), name="tournament-enum-game-format-durations"),
     path("enums/configurations/", TournamentConfigurationEnumView.as_view(), name="tournament-enum-configurations"),
-    # Last league pre-fill helper — fixed path before <int:pk>
-    path("last-league/", LastLeagueView.as_view(), name="tournament-last-league"),
+    # Last information pre-fill helper — fixed path before <int:pk>
+    path("last-information/", LastInformationView.as_view(), name="tournament-last-information"),
     # CRUD
     path("", TournamentListCreateView.as_view(), name="tournament-list"),
     path("<int:pk>/", TournamentDetailView.as_view(), name="tournament-detail"),

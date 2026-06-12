@@ -26,8 +26,9 @@ class TournamentSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "owner", "status", "pairs_count", "created_at", "updated_at"]
 
 
-class LastLeagueSerializer(serializers.Serializer):
+class LastInformationSerializer(serializers.Serializer):
     league = serializers.CharField(allow_null=True)
+    location = serializers.CharField(allow_null=True)
 
 
 class TimeSlotSerializer(serializers.ModelSerializer):

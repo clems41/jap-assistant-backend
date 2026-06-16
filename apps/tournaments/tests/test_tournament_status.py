@@ -105,7 +105,9 @@ class TestTournamentStatusSetTransition:
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.DRAFT
 
-    def test_status_becomes_set_when_game_format_and_configuration_updated(self) -> None:
+    def test_status_becomes_set_when_game_format_and_configuration_updated(
+        self,
+    ) -> None:
         tournament = TournamentFactory(game_format="", configuration=None)
         for i in range(4):
             PairFactory(tournament=tournament, weight=float(100 + i * 10))
@@ -119,7 +121,10 @@ class TestTournamentStatusSetTransition:
 
     def test_status_reverts_to_draft_when_pair_deleted_below_minimum(self) -> None:
         tournament = _tournament_with_config()
-        pairs = [PairFactory(tournament=tournament, weight=float(100 + i * 10)) for i in range(4)]
+        pairs = [
+            PairFactory(tournament=tournament, weight=float(100 + i * 10))
+            for i in range(4)
+        ]
 
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.SET
@@ -131,7 +136,10 @@ class TestTournamentStatusSetTransition:
 
     def test_status_reverts_to_draft_when_player_ranking_removed(self) -> None:
         tournament = _tournament_with_config()
-        pairs = [PairFactory(tournament=tournament, weight=float(100 + i * 10)) for i in range(4)]
+        pairs = [
+            PairFactory(tournament=tournament, weight=float(100 + i * 10))
+            for i in range(4)
+        ]
 
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.SET

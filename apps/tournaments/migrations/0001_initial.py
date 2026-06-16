@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -15,23 +14,90 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Tournament',
+            name="Tournament",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=255)),
-                ('category', models.CharField(choices=[('P25', 'P25'), ('P50', 'P50'), ('P100', 'P100'), ('P250', 'P250'), ('P500', 'P500'), ('P1000', 'P1000'), ('P2000', 'P2000')], max_length=10)),
-                ('start_date', models.DateField()),
-                ('location', models.CharField(max_length=255)),
-                ('league', models.CharField(choices=[('Auvergne-Rhône-Alpes', 'Auvergne-Rhône-Alpes'), ('Bourgogne-Franche-Comté', 'Bourgogne-Franche-Comté'), ('Bretagne', 'Bretagne'), ('Centre Val de Loire', 'Centre Val de Loire'), ('Corse', 'Corse'), ('Grand Est', 'Grand Est'), ('Guadeloupe', 'Guadeloupe'), ('Guyane', 'Guyane'), ('Hauts de France', 'Hauts de France'), ('Ile de France', 'Ile de France'), ('Martinique', 'Martinique'), ('Normandie', 'Normandie'), ('Nouvelle Aquitaine', 'Nouvelle Aquitaine'), ('Nouvelle Calédonie', 'Nouvelle Calédonie'), ('Occitanie', 'Occitanie'), ('Pays de la Loire', 'Pays de la Loire'), ("Provence-Alpes-Côtes d'Azur", "Provence-Alpes-Côtes d'Azur"), ('Réunion', 'Réunion')], max_length=50)),
-                ('gender', models.CharField(choices=[('Homme', 'Homme'), ('Femme', 'Femme'), ('Mixte', 'Mixte')], max_length=10)),
-                ('owner', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tournaments', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=255)),
+                (
+                    "category",
+                    models.CharField(
+                        choices=[
+                            ("P25", "P25"),
+                            ("P50", "P50"),
+                            ("P100", "P100"),
+                            ("P250", "P250"),
+                            ("P500", "P500"),
+                            ("P1000", "P1000"),
+                            ("P2000", "P2000"),
+                        ],
+                        max_length=10,
+                    ),
+                ),
+                ("start_date", models.DateField()),
+                ("location", models.CharField(max_length=255)),
+                (
+                    "league",
+                    models.CharField(
+                        choices=[
+                            ("Auvergne-Rhône-Alpes", "Auvergne-Rhône-Alpes"),
+                            ("Bourgogne-Franche-Comté", "Bourgogne-Franche-Comté"),
+                            ("Bretagne", "Bretagne"),
+                            ("Centre Val de Loire", "Centre Val de Loire"),
+                            ("Corse", "Corse"),
+                            ("Grand Est", "Grand Est"),
+                            ("Guadeloupe", "Guadeloupe"),
+                            ("Guyane", "Guyane"),
+                            ("Hauts de France", "Hauts de France"),
+                            ("Ile de France", "Ile de France"),
+                            ("Martinique", "Martinique"),
+                            ("Normandie", "Normandie"),
+                            ("Nouvelle Aquitaine", "Nouvelle Aquitaine"),
+                            ("Nouvelle Calédonie", "Nouvelle Calédonie"),
+                            ("Occitanie", "Occitanie"),
+                            ("Pays de la Loire", "Pays de la Loire"),
+                            (
+                                "Provence-Alpes-Côtes d'Azur",
+                                "Provence-Alpes-Côtes d'Azur",
+                            ),
+                            ("Réunion", "Réunion"),
+                        ],
+                        max_length=50,
+                    ),
+                ),
+                (
+                    "gender",
+                    models.CharField(
+                        choices=[
+                            ("Homme", "Homme"),
+                            ("Femme", "Femme"),
+                            ("Mixte", "Mixte"),
+                        ],
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "owner",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="tournaments",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'tournament',
-                'verbose_name_plural': 'tournaments',
-                'ordering': ['start_date', 'name'],
+                "verbose_name": "tournament",
+                "verbose_name_plural": "tournaments",
+                "ordering": ["start_date", "name"],
             },
         ),
     ]

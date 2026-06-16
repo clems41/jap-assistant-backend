@@ -4,15 +4,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournaments', '0005_timeslot'),
+        ("tournaments", "0005_timeslot"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tournament',
-            name='status',
-            field=models.CharField(choices=[('DRAFT', 'Brouillon'), ('SET', 'Configuré'), ('READY', 'Prêt'), ('STARTED', 'En cours'), ('FINISHED', 'Terminé')], default='DRAFT', max_length=10),
+            model_name="tournament",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("DRAFT", "Brouillon"),
+                    ("SET", "Configuré"),
+                    ("READY", "Prêt"),
+                    ("STARTED", "En cours"),
+                    ("FINISHED", "Terminé"),
+                ],
+                default="DRAFT",
+                max_length=10,
+            ),
         ),
     ]

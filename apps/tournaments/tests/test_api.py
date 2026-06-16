@@ -52,7 +52,9 @@ def other_client(other_user):
 
 @pytest.mark.django_db
 class TestListTournaments:
-    def test_list_tournaments_unauthenticated_returns_401(self, api_client: APIClient) -> None:
+    def test_list_tournaments_unauthenticated_returns_401(
+        self, api_client: APIClient
+    ) -> None:
         """GET /tournaments/ requires authentication."""
         response = api_client.get(LIST_CREATE_URL)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -105,14 +107,18 @@ VALID_PAYLOAD = {
 
 @pytest.mark.django_db
 class TestCreateTournament:
-    def test_create_tournament_unauthenticated_returns_401(self, api_client: APIClient) -> None:
+    def test_create_tournament_unauthenticated_returns_401(
+        self, api_client: APIClient
+    ) -> None:
         response = api_client.post(LIST_CREATE_URL, VALID_PAYLOAD, format="json")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_create_tournament_success(
         self, authenticated_client: APIClient, user
     ) -> None:
-        response = authenticated_client.post(LIST_CREATE_URL, VALID_PAYLOAD, format="json")
+        response = authenticated_client.post(
+            LIST_CREATE_URL, VALID_PAYLOAD, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["name"] == "Open Sud"
         assert response.data["category"] == "P100"
@@ -128,7 +134,9 @@ class TestCreateTournament:
         self, authenticated_client: APIClient, user
     ) -> None:
         """The owner must be set to request.user — not provided in the payload."""
-        response = authenticated_client.post(LIST_CREATE_URL, VALID_PAYLOAD, format="json")
+        response = authenticated_client.post(
+            LIST_CREATE_URL, VALID_PAYLOAD, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["owner"] == user.pk
 
@@ -377,7 +385,9 @@ class TestEnumCategories:
         response = api_client.get(CATEGORIES_URL)
         assert response.status_code != status.HTTP_401_UNAUTHORIZED
 
-    def test_list_categories_unknown_enum_returns_404(self, api_client: APIClient) -> None:
+    def test_list_categories_unknown_enum_returns_404(
+        self, api_client: APIClient
+    ) -> None:
         response = api_client.get("/api/v1/tournaments/enums/unknown")
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -388,9 +398,7 @@ class TestEnumLeagues:
         response = api_client.get(LEAGUES_URL)
         assert response.status_code == status.HTTP_200_OK
 
-    def test_list_leagues_returns_all_leagues(
-        self, api_client: APIClient
-    ) -> None:
+    def test_list_leagues_returns_all_leagues(self, api_client: APIClient) -> None:
         response = api_client.get(LEAGUES_URL)
         assert len(response.data) == len(Tournament.League)
 
@@ -418,9 +426,7 @@ class TestEnumGenders:
         response = api_client.get(GENDERS_URL)
         assert response.status_code == status.HTTP_200_OK
 
-    def test_list_genders_returns_all_genders(
-        self, api_client: APIClient
-    ) -> None:
+    def test_list_genders_returns_all_genders(self, api_client: APIClient) -> None:
         response = api_client.get(GENDERS_URL)
         assert len(response.data) == len(Tournament.Gender)
 
@@ -483,7 +489,9 @@ class TestEnumConfigurations:
         res = api_client.get(CONFIGURATIONS_URL)
         assert res.status_code == status.HTTP_200_OK
 
-    def test_list_configurations_returns_all_configurations(self, api_client: APIClient) -> None:
+    def test_list_configurations_returns_all_configurations(
+        self, api_client: APIClient
+    ) -> None:
         res = api_client.get(CONFIGURATIONS_URL)
         assert len(res.data) == len(Tournament.Configuration)
 
@@ -505,7 +513,7 @@ class TestEnumConfigurations:
 # Last information
 # ---------------------------------------------------------------------------
 
-LAST_INFORMATION_URL = "/api/v1/tournaments/last-information/"
+INFORMATIONS_URL = "/api/v1/tournaments/informations/"
 
 # ---------------------------------------------------------------------------
 # Filters
@@ -562,7 +570,9 @@ class TestFilterTournaments:
         TournamentFactory(owner=user, start_date="2026-05-15")
         TournamentFactory(owner=user, start_date="2026-06-01")
         TournamentFactory(owner=user, start_date="2026-07-10")
-        response = authenticated_client.get(LIST_CREATE_URL, {"start_date": "2026-06-01"})
+        response = authenticated_client.get(
+            LIST_CREATE_URL, {"start_date": "2026-06-01"}
+        )
         assert response.status_code == status.HTTP_200_OK
         assert response.data["count"] == 2
         for t in response.data["results"]:
@@ -601,9 +611,17 @@ class TestFilterTournaments:
         self, authenticated_client: APIClient, user
     ) -> None:
         """?category=P100&gender=Homme returns only P100 male tournaments."""
-        TournamentFactory(owner=user, category=Tournament.Category.P100, gender=Tournament.Gender.MALE)
-        TournamentFactory(owner=user, category=Tournament.Category.P100, gender=Tournament.Gender.FEMALE)
-        TournamentFactory(owner=user, category=Tournament.Category.P250, gender=Tournament.Gender.MALE)
+        TournamentFactory(
+            owner=user, category=Tournament.Category.P100, gender=Tournament.Gender.MALE
+        )
+        TournamentFactory(
+            owner=user,
+            category=Tournament.Category.P100,
+            gender=Tournament.Gender.FEMALE,
+        )
+        TournamentFactory(
+            owner=user, category=Tournament.Category.P250, gender=Tournament.Gender.MALE
+        )
         response = authenticated_client.get(
             LIST_CREATE_URL, {"category": "P100", "gender": "Homme"}
         )
@@ -670,7 +688,9 @@ class TestListTournamentsOrdering:
         TournamentFactory(owner=user, start_date="2026-03-01")
         TournamentFactory(owner=user, start_date="2026-09-01")
         TournamentFactory(owner=user, start_date="2026-06-01")
-        response = authenticated_client.get(LIST_CREATE_URL, {"ordering": "-start_date"})
+        response = authenticated_client.get(
+            LIST_CREATE_URL, {"ordering": "-start_date"}
+        )
         assert response.status_code == status.HTTP_200_OK
         dates = [t["start_date"] for t in response.data["results"]]
         assert dates == sorted(dates, reverse=True)
@@ -706,7 +726,9 @@ class TestListTournamentsOrdering:
         t1 = TournamentFactory(owner=user, start_date="2026-06-01")
         t2 = TournamentFactory(owner=user, start_date="2026-06-02")
         t3 = TournamentFactory(owner=user, start_date="2026-06-03")
-        response = authenticated_client.get(LIST_CREATE_URL, {"ordering": "-created_at"})
+        response = authenticated_client.get(
+            LIST_CREATE_URL, {"ordering": "-created_at"}
+        )
         assert response.status_code == status.HTTP_200_OK
         ids = [t["id"] for t in response.data["results"]]
         # Created in order t1, t2, t3 — descending means t3, t2, t1
@@ -717,7 +739,9 @@ class TestListTournamentsOrdering:
     ) -> None:
         """?ordering=nonexistent_field is silently ignored (falls back to default order)."""
         TournamentFactory.create_batch(3, owner=user)
-        response = authenticated_client.get(LIST_CREATE_URL, {"ordering": "nonexistent_field"})
+        response = authenticated_client.get(
+            LIST_CREATE_URL, {"ordering": "nonexistent_field"}
+        )
         assert response.status_code == status.HTTP_200_OK
         assert response.data["count"] == 3
 
@@ -782,48 +806,112 @@ class TestListTournamentsPageSize:
 
 
 @pytest.mark.django_db
-class TestLastInformation:
-    def test_last_information_unauthenticated_returns_401(self, api_client: APIClient) -> None:
-        """GET /tournaments/last-information requires authentication."""
-        response = api_client.get(LAST_INFORMATION_URL)
+class TestInformations:
+    def test_informations_unauthenticated_returns_401(
+        self, api_client: APIClient
+    ) -> None:
+        """GET /tournaments/informations requires authentication."""
+        response = api_client.get(INFORMATIONS_URL)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_last_information_no_tournament_returns_null(
+    def test_informations_no_tournament_returns_null_and_empty_list(
         self, authenticated_client: APIClient
     ) -> None:
-        """When the user has no tournament, league and location must be null — not a 404."""
-        response = authenticated_client.get(LAST_INFORMATION_URL)
+        """When the user has no tournament, fields must be null/empty — not a 404."""
+        response = authenticated_client.get(INFORMATIONS_URL)
         assert response.status_code == status.HTTP_200_OK
-        assert response.data == {"league": None, "location": None}
+        assert response.data == {
+            "last_league": None,
+            "last_location": None,
+            "all_locations": [],
+        }
 
-    def test_last_information_returns_fields_of_most_recent_tournament(
+    def test_informations_returns_fields_of_most_recent_tournament(
         self, authenticated_client: APIClient, user
     ) -> None:
         """Returns the league and location of the most recently created tournament."""
-        TournamentFactory(owner=user, league=Tournament.League.BRETAGNE, location="Rennes")
-        TournamentFactory(owner=user, league=Tournament.League.NORMANDIE, location="Rouen")
-        response = authenticated_client.get(LAST_INFORMATION_URL)
+        TournamentFactory(
+            owner=user, league=Tournament.League.BRETAGNE, location="Rennes"
+        )
+        TournamentFactory(
+            owner=user, league=Tournament.League.NORMANDIE, location="Rouen"
+        )
+        response = authenticated_client.get(INFORMATIONS_URL)
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["league"] == Tournament.League.NORMANDIE
-        assert response.data["location"] == "Rouen"
+        assert response.data["last_league"] == Tournament.League.NORMANDIE
+        assert response.data["last_location"] == "Rouen"
 
-    def test_last_information_ignores_other_users_tournaments(
+    def test_informations_ignores_other_users_tournaments(
         self, authenticated_client: APIClient, user, other_user
     ) -> None:
         """Only the authenticated user's tournaments are considered."""
-        TournamentFactory(owner=other_user, league=Tournament.League.BRETAGNE, location="Rennes")
-        response = authenticated_client.get(LAST_INFORMATION_URL)
+        TournamentFactory(
+            owner=other_user, league=Tournament.League.BRETAGNE, location="Rennes"
+        )
+        response = authenticated_client.get(INFORMATIONS_URL)
         assert response.status_code == status.HTTP_200_OK
-        assert response.data == {"league": None, "location": None}
+        assert response.data == {
+            "last_league": None,
+            "last_location": None,
+            "all_locations": [],
+        }
 
-    def test_last_information_response_shape(
+    def test_informations_response_shape(
         self, authenticated_client: APIClient, user
     ) -> None:
-        """Response contains 'league' and 'location' keys."""
-        TournamentFactory(owner=user, league=Tournament.League.ILE_DE_FRANCE, location="Paris")
-        response = authenticated_client.get(LAST_INFORMATION_URL)
+        """Response contains 'last_league', 'last_location' and 'all_locations' keys."""
+        TournamentFactory(
+            owner=user, league=Tournament.League.ILE_DE_FRANCE, location="Paris"
+        )
+        response = authenticated_client.get(INFORMATIONS_URL)
         assert response.status_code == status.HTTP_200_OK
-        assert set(response.data.keys()) == {"league", "location"}
+        assert set(response.data.keys()) == {
+            "last_league",
+            "last_location",
+            "all_locations",
+        }
+
+    def test_informations_all_locations_deduplicates_identical_locations(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """Locations are deduplicated even if used by multiple tournaments."""
+        TournamentFactory(owner=user, location="Paris")
+        TournamentFactory(owner=user, location="Paris")
+        TournamentFactory(owner=user, location="Lyon")
+        response = authenticated_client.get(INFORMATIONS_URL)
+        assert response.status_code == status.HTTP_200_OK
+        all_locations = response.data["all_locations"]
+        assert all_locations.count("Paris") == 1
+        assert sorted(all_locations) == ["Lyon", "Paris"]
+
+    def test_informations_all_locations_ordered_by_most_recent_usage_first(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """Locations are ordered by the most recent tournament using them."""
+        TournamentFactory(owner=user, location="Paris")
+        TournamentFactory(owner=user, location="Lyon")
+        TournamentFactory(owner=user, location="Paris")
+        response = authenticated_client.get(INFORMATIONS_URL)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["all_locations"] == ["Paris", "Lyon"]
+
+    def test_informations_all_locations_empty_when_no_tournament(
+        self, authenticated_client: APIClient
+    ) -> None:
+        """all_locations is an empty list when the user has no tournament."""
+        response = authenticated_client.get(INFORMATIONS_URL)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["all_locations"] == []
+
+    def test_informations_all_locations_ignores_other_users_tournaments(
+        self, authenticated_client: APIClient, user, other_user
+    ) -> None:
+        """Other users' locations must not appear in all_locations."""
+        TournamentFactory(owner=other_user, location="Marseille")
+        TournamentFactory(owner=user, location="Paris")
+        response = authenticated_client.get(INFORMATIONS_URL)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["all_locations"] == ["Paris"]
 
 
 # ---------------------------------------------------------------------------
@@ -840,7 +928,9 @@ class TestGameFormatDurationEnum:
         response = api_client.get(GAME_FORMAT_DURATIONS_URL)
         assert response.status_code == status.HTTP_200_OK
 
-    def test_get_game_format_durations_no_auth_required(self, api_client: APIClient) -> None:
+    def test_get_game_format_durations_no_auth_required(
+        self, api_client: APIClient
+    ) -> None:
         response = api_client.get(GAME_FORMAT_DURATIONS_URL)
         assert response.status_code != status.HTTP_401_UNAUTHORIZED
 
@@ -921,7 +1011,9 @@ class TestTimeSlotListCreate:
         response = client.get(url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_list_returns_all_slots_without_pagination(self, authenticated_client, tournament) -> None:
+    def test_list_returns_all_slots_without_pagination(
+        self, authenticated_client, tournament
+    ) -> None:
         TimeSlotFactory(tournament=tournament)
         TimeSlotFactory(tournament=tournament)
         url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
@@ -930,7 +1022,9 @@ class TestTimeSlotListCreate:
         assert isinstance(response.data, list)
         assert len(response.data) == 2
 
-    def test_list_returns_only_slots_of_own_tournament(self, authenticated_client, tournament) -> None:
+    def test_list_returns_only_slots_of_own_tournament(
+        self, authenticated_client, tournament
+    ) -> None:
         TimeSlotFactory(tournament=tournament)
         TimeSlotFactory(tournament=tournament)
         other_tournament = TournamentFactory()
@@ -958,37 +1052,61 @@ class TestTimeSlotListCreate:
 
     def test_create_success(self, authenticated_client, tournament) -> None:
         url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
-        response = authenticated_client.post(url, data=VALID_SLOT_PAYLOAD, format="json")
+        response = authenticated_client.post(
+            url, data=VALID_SLOT_PAYLOAD, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["start_time"] == "09:00:00"
         assert response.data["end_time"] == "11:00:00"
         assert response.data["courts_available"] == 4
         assert response.data["tournament"] == tournament.pk
 
-    def test_create_tournament_not_found_returns_404(self, authenticated_client) -> None:
+    def test_create_tournament_not_found_returns_404(
+        self, authenticated_client
+    ) -> None:
         url = TIME_SLOTS_LIST_URL.format(tournament_id=99999)
-        response = authenticated_client.post(url, data=VALID_SLOT_PAYLOAD, format="json")
+        response = authenticated_client.post(
+            url, data=VALID_SLOT_PAYLOAD, format="json"
+        )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_create_other_user_tournament_returns_404(self, authenticated_client) -> None:
+    def test_create_other_user_tournament_returns_404(
+        self, authenticated_client
+    ) -> None:
         other_tournament = TournamentFactory()
         url = TIME_SLOTS_LIST_URL.format(tournament_id=other_tournament.pk)
-        response = authenticated_client.post(url, data=VALID_SLOT_PAYLOAD, format="json")
+        response = authenticated_client.post(
+            url, data=VALID_SLOT_PAYLOAD, format="json"
+        )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_create_end_before_start_returns_400(self, authenticated_client, tournament) -> None:
+    def test_create_end_before_start_returns_400(
+        self, authenticated_client, tournament
+    ) -> None:
         url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
-        payload = {"start_time": "11:00:00", "end_time": "09:00:00", "courts_available": 4}
+        payload = {
+            "start_time": "11:00:00",
+            "end_time": "09:00:00",
+            "courts_available": 4,
+        }
         response = authenticated_client.post(url, data=payload, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_create_equal_times_returns_400(self, authenticated_client, tournament) -> None:
+    def test_create_equal_times_returns_400(
+        self, authenticated_client, tournament
+    ) -> None:
         url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
-        payload = {"start_time": "09:00:00", "end_time": "09:00:00", "courts_available": 4}
+        payload = {
+            "start_time": "09:00:00",
+            "end_time": "09:00:00",
+            "courts_available": 4,
+        }
         response = authenticated_client.post(url, data=payload, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_create_missing_field_returns_400(self, authenticated_client, tournament) -> None:
+    def test_create_missing_field_returns_400(
+        self, authenticated_client, tournament
+    ) -> None:
         url = TIME_SLOTS_LIST_URL.format(tournament_id=tournament.pk)
         payload = {"start_time": "09:00:00", "end_time": "11:00:00"}
         response = authenticated_client.post(url, data=payload, format="json")
@@ -1003,8 +1121,15 @@ class TestTimeSlotDetail:
         response = client.get(url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_retrieve_own_slot_returns_200(self, authenticated_client, tournament) -> None:
-        slot = TimeSlotFactory(tournament=tournament, start_time=time(9, 0), end_time=time(11, 0), courts_available=3)
+    def test_retrieve_own_slot_returns_200(
+        self, authenticated_client, tournament
+    ) -> None:
+        slot = TimeSlotFactory(
+            tournament=tournament,
+            start_time=time(9, 0),
+            end_time=time(11, 0),
+            courts_available=3,
+        )
         url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
         response = authenticated_client.get(url)
         assert response.status_code == status.HTTP_200_OK
@@ -1014,14 +1139,20 @@ class TestTimeSlotDetail:
     def test_retrieve_other_user_slot_returns_404(self, authenticated_client) -> None:
         other_tournament = TournamentFactory()
         slot = TimeSlotFactory(tournament=other_tournament)
-        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=other_tournament.pk, pk=slot.pk)
+        url = TIME_SLOTS_DETAIL_URL.format(
+            tournament_id=other_tournament.pk, pk=slot.pk
+        )
         response = authenticated_client.get(url)
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_update_success(self, authenticated_client, tournament) -> None:
         slot = TimeSlotFactory(tournament=tournament)
         url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
-        payload = {"start_time": "10:00:00", "end_time": "12:00:00", "courts_available": 6}
+        payload = {
+            "start_time": "10:00:00",
+            "end_time": "12:00:00",
+            "courts_available": 6,
+        }
         response = authenticated_client.put(url, data=payload, format="json")
         assert response.status_code == status.HTTP_200_OK
         assert response.data["courts_available"] == 6
@@ -1029,26 +1160,42 @@ class TestTimeSlotDetail:
     def test_partial_update_success(self, authenticated_client, tournament) -> None:
         slot = TimeSlotFactory(tournament=tournament, courts_available=2)
         url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
-        response = authenticated_client.patch(url, data={"courts_available": 8}, format="json")
+        response = authenticated_client.patch(
+            url, data={"courts_available": 8}, format="json"
+        )
         assert response.status_code == status.HTTP_200_OK
         assert response.data["courts_available"] == 8
 
-    def test_update_end_before_start_returns_400(self, authenticated_client, tournament) -> None:
+    def test_update_end_before_start_returns_400(
+        self, authenticated_client, tournament
+    ) -> None:
         slot = TimeSlotFactory(tournament=tournament)
         url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
-        payload = {"start_time": "12:00:00", "end_time": "09:00:00", "courts_available": 4}
+        payload = {
+            "start_time": "12:00:00",
+            "end_time": "09:00:00",
+            "courts_available": 4,
+        }
         response = authenticated_client.put(url, data=payload, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_update_other_user_slot_returns_404(self, authenticated_client) -> None:
         other_tournament = TournamentFactory()
         slot = TimeSlotFactory(tournament=other_tournament)
-        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=other_tournament.pk, pk=slot.pk)
-        payload = {"start_time": "10:00:00", "end_time": "12:00:00", "courts_available": 2}
+        url = TIME_SLOTS_DETAIL_URL.format(
+            tournament_id=other_tournament.pk, pk=slot.pk
+        )
+        payload = {
+            "start_time": "10:00:00",
+            "end_time": "12:00:00",
+            "courts_available": 2,
+        }
         response = authenticated_client.put(url, data=payload, format="json")
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_delete_own_slot_returns_204(self, authenticated_client, tournament) -> None:
+    def test_delete_own_slot_returns_204(
+        self, authenticated_client, tournament
+    ) -> None:
         slot = TimeSlotFactory(tournament=tournament)
         url = TIME_SLOTS_DETAIL_URL.format(tournament_id=tournament.pk, pk=slot.pk)
         response = authenticated_client.delete(url)
@@ -1058,6 +1205,8 @@ class TestTimeSlotDetail:
     def test_delete_other_user_slot_returns_404(self, authenticated_client) -> None:
         other_tournament = TournamentFactory()
         slot = TimeSlotFactory(tournament=other_tournament)
-        url = TIME_SLOTS_DETAIL_URL.format(tournament_id=other_tournament.pk, pk=slot.pk)
+        url = TIME_SLOTS_DETAIL_URL.format(
+            tournament_id=other_tournament.pk, pk=slot.pk
+        )
         response = authenticated_client.delete(url)
         assert response.status_code == status.HTTP_404_NOT_FOUND

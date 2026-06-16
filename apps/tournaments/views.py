@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 from apps.tournaments.models import TimeSlot, Tournament
 from apps.tournaments.permissions import IsOwner
 from apps.tournaments.serializers import (
-    LastInformationSerializer,
+    InformationsSerializer,
     TimeSlotSerializer,
     TournamentSerializer,
 )
@@ -22,10 +22,7 @@ from apps.tournaments.serializers import (
 
 def enum_to_value_label(choices_class: type[TextChoices]) -> list[dict[str, str]]:
     """Convert a TextChoices class into a list of {value, label} dicts."""
-    return [
-        {"value": member.value, "label": member.label}
-        for member in choices_class
-    ]
+    return [{"value": member.value, "label": member.label} for member in choices_class]
 
 
 class _EnumChoiceSerializer(Serializer):
@@ -180,22 +177,38 @@ class TournamentGameFormatDurationView(APIView):
         return Response(data)
 
 
-class LastInformationView(APIView):
-    """Return the league and location of the most recently created tournament by the authenticated user."""
+class InformationsView(APIView):
+    """Return pre-fill helper data: most recent league/location and all
+    locations used by the authenticated user's tournaments, most
+    recently used first."""
 
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses={200: LastInformationSerializer})
+    @extend_schema(responses={200: InformationsSerializer})
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        tournament = (
+        tournaments = list(
             Tournament.objects.filter(owner=request.user)
             .order_by("-created_at")
-            .only("league", "location")
-            .first()
+            .only("league", "location", "created_at")
         )
-        league = tournament.league if tournament is not None else None
-        location = tournament.location if tournament is not None else None
-        return Response({"league": league, "location": location})
+
+        last_league = tournaments[0].league if tournaments else None
+        last_location = tournaments[0].location if tournaments else None
+
+        seen: set[str] = set()
+        all_locations: list[str] = []
+        for tournament in tournaments:
+            if tournament.location not in seen:
+                seen.add(tournament.location)
+                all_locations.append(tournament.location)
+
+        return Response(
+            {
+                "last_league": last_league,
+                "last_location": last_location,
+                "all_locations": all_locations,
+            }
+        )
 
 
 def _get_tournament_for_user(tournament_pk: int, user) -> Tournament:
@@ -212,11 +225,15 @@ class TimeSlotListCreateView(generics.ListCreateAPIView):
     ordering = ["start_time"]
 
     def get_queryset(self):
-        tournament = _get_tournament_for_user(self.kwargs["tournament_id"], self.request.user)
+        tournament = _get_tournament_for_user(
+            self.kwargs["tournament_id"], self.request.user
+        )
         return TimeSlot.objects.filter(tournament=tournament)
 
     def perform_create(self, serializer: BaseSerializer) -> None:
-        tournament = _get_tournament_for_user(self.kwargs["tournament_id"], self.request.user)
+        tournament = _get_tournament_for_user(
+            self.kwargs["tournament_id"], self.request.user
+        )
         serializer.save(tournament=tournament)
 
 
@@ -227,5 +244,7 @@ class TimeSlotDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        tournament = _get_tournament_for_user(self.kwargs["tournament_id"], self.request.user)
+        tournament = _get_tournament_for_user(
+            self.kwargs["tournament_id"], self.request.user
+        )
         return TimeSlot.objects.filter(tournament=tournament)

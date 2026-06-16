@@ -23,18 +23,34 @@ class TournamentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "owner", "status", "pairs_count", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "owner",
+            "status",
+            "pairs_count",
+            "created_at",
+            "updated_at",
+        ]
 
 
-class LastInformationSerializer(serializers.Serializer):
-    league = serializers.CharField(allow_null=True)
-    location = serializers.CharField(allow_null=True)
+class InformationsSerializer(serializers.Serializer):
+    last_league = serializers.CharField(allow_null=True)
+    last_location = serializers.CharField(allow_null=True)
+    all_locations = serializers.ListField(child=serializers.CharField())
 
 
 class TimeSlotSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimeSlot
-        fields = ["id", "tournament", "start_time", "end_time", "courts_available", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "tournament",
+            "start_time",
+            "end_time",
+            "courts_available",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["id", "tournament", "created_at", "updated_at"]
 
     def validate(self, attrs: dict) -> dict:
@@ -42,7 +58,11 @@ class TimeSlotSerializer(serializers.ModelSerializer):
         end = attrs.get("end_time")
         if start is not None and end is not None and end <= start:
             raise serializers.ValidationError(
-                {"end_time": ["L'heure de fin doit être postérieure à l'heure de début."]}
+                {
+                    "end_time": [
+                        "L'heure de fin doit être postérieure à l'heure de début."
+                    ]
+                }
             )
         return attrs
 

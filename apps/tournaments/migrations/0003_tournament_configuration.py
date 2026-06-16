@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournaments', '0002_tournament_game_format'),
+        ("tournaments", "0002_tournament_game_format"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tournament',
-            name='configuration',
-            field=models.CharField(blank=True, choices=[('TMC', 'Tournoi Multi Chance')], max_length=20, null=True),
+            model_name="tournament",
+            name="configuration",
+            field=models.CharField(
+                blank=True,
+                choices=[("TMC", "Tournoi Multi Chance")],
+                max_length=20,
+                null=True,
+            ),
         ),
     ]

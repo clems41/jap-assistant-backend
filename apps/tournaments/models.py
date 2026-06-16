@@ -34,7 +34,10 @@ class Tournament(TimeStampedModel):
         NOUVELLE_CALEDONIE = "Nouvelle Calédonie", "Nouvelle Calédonie"
         OCCITANIE = "Occitanie", "Occitanie"
         PAYS_DE_LA_LOIRE = "Pays de la Loire", "Pays de la Loire"
-        PROVENCE_ALPES_COTES_AZUR = "Provence-Alpes-Côtes d'Azur", "Provence-Alpes-Côtes d'Azur"
+        PROVENCE_ALPES_COTES_AZUR = (
+            "Provence-Alpes-Côtes d'Azur",
+            "Provence-Alpes-Côtes d'Azur",
+        )
         REUNION = "Réunion", "Réunion"
 
     class Gender(models.TextChoices):
@@ -45,10 +48,22 @@ class Tournament(TimeStampedModel):
     class GameFormat(models.TextChoices):
         A1 = "A1", "A1 : 3 sets à 6 jeux, jeu décisif à 6-6"
         A2 = "A2", "A2 : 3 sets à 6 jeux, point décisif, jeu décisif à 6-6"
-        B1 = "B1", "B1 : 2 sets à 6 jeux, jeu décisif à 6-6, 3ème set = super jeu décisif à 10 points"
-        B2 = "B2", "B2 : 2 sets à 6 jeux, point décisif, jeu décisif à 6-6, 3ème set = super jeu décisif à 10 points"
-        C1 = "C1", "C1 : 2 sets à 4 jeux, jeu décisif à 4-4, 3ème set = super jeu décisif à 10 points"
-        C2 = "C2", "C2 : 2 sets à 4 jeux, point décisif, jeu décisif à 4-4, 3ème set = super jeu décisif à 10 points"
+        B1 = (
+            "B1",
+            "B1 : 2 sets à 6 jeux, jeu décisif à 6-6, 3ème set = super jeu décisif à 10 points",
+        )
+        B2 = (
+            "B2",
+            "B2 : 2 sets à 6 jeux, point décisif, jeu décisif à 6-6, 3ème set = super jeu décisif à 10 points",
+        )
+        C1 = (
+            "C1",
+            "C1 : 2 sets à 4 jeux, jeu décisif à 4-4, 3ème set = super jeu décisif à 10 points",
+        )
+        C2 = (
+            "C2",
+            "C2 : 2 sets à 4 jeux, point décisif, jeu décisif à 4-4, 3ème set = super jeu décisif à 10 points",
+        )
         D1 = "D1", "D1 : 1 set à 9 jeux, jeu décisif à 8-8"
         D2 = "D2", "D2 : 1 set à 9 jeux, point décisif, jeu décisif à 8-8"
         E = "E", "E : 1 super jeu décisif à 10 points"
@@ -88,8 +103,12 @@ class Tournament(TimeStampedModel):
     location = models.CharField(max_length=255)
     league = models.CharField(max_length=50, choices=League.choices)
     gender = models.CharField(max_length=10, choices=Gender.choices)
-    game_format = models.CharField(max_length=2, choices=GameFormat.choices, blank=True, default="")
-    configuration = models.CharField(max_length=20, choices=Configuration.choices, null=True, blank=True)
+    game_format = models.CharField(
+        max_length=2, choices=GameFormat.choices, blank=True, default=""
+    )
+    configuration = models.CharField(
+        max_length=20, choices=Configuration.choices, null=True, blank=True
+    )
     estimated_match_duration = models.PositiveSmallIntegerField(null=True, blank=True)
     status = models.CharField(
         max_length=10,

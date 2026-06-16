@@ -5,25 +5,39 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tournaments', '0004_tournament_estimated_match_duration_and_more'),
+        ("tournaments", "0004_tournament_estimated_match_duration_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='TimeSlot',
+            name="TimeSlot",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('start_time', models.TimeField()),
-                ('end_time', models.TimeField()),
-                ('courts_available', models.PositiveSmallIntegerField()),
-                ('tournament', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='time_slots', to='tournaments.tournament')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("start_time", models.TimeField()),
+                ("end_time", models.TimeField()),
+                ("courts_available", models.PositiveSmallIntegerField()),
+                (
+                    "tournament",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="time_slots",
+                        to="tournaments.tournament",
+                    ),
+                ),
             ],
             options={
-                'ordering': ['start_time'],
+                "ordering": ["start_time"],
             },
         ),
     ]

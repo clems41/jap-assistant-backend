@@ -24,10 +24,11 @@ def register_signals() -> None:
     )
     def on_tournament_saved(sender, instance, update_fields, **kwargs) -> None:
         # Guard: recompute_status() saves with these exact fields — skip to avoid recursion
-        if update_fields and frozenset(update_fields) == frozenset(["status", "updated_at"]):
+        if update_fields and frozenset(update_fields) == frozenset(
+            ["status", "updated_at"]
+        ):
             return
         instance.recompute_status()
-
 
     @receiver(post_save, sender=Pair, dispatch_uid="tournaments.pair_post_save")
     def on_pair_saved(sender, instance, **kwargs) -> None:
@@ -43,9 +44,9 @@ def register_signals() -> None:
         # whose weight may have been nullified following a ranking change.
         from apps.players.models import Pair as PairModel
 
-        pairs = PairModel.objects.filter(
-            player1=instance
-        ) | PairModel.objects.filter(player2=instance)
+        pairs = PairModel.objects.filter(player1=instance) | PairModel.objects.filter(
+            player2=instance
+        )
 
         seen = set()
         for pair in pairs:

@@ -12,7 +12,6 @@ def backfill_pairs_count(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tournaments", "0006_add_status_to_tournament"),
     ]

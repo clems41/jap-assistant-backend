@@ -87,7 +87,9 @@ class TestMatchScorePatch:
 
         assert resp.status_code == 401
 
-    def test_404_match_from_another_tournament(self, authenticated_client, tournament, user):
+    def test_404_match_from_another_tournament(
+        self, authenticated_client, tournament, user
+    ):
         other_tournament = TournamentFactory(owner=user)
         other_bracket = BracketFactory(tournament=other_tournament)
         pair1 = PairFactory(tournament=other_tournament)
@@ -102,13 +104,23 @@ class TestMatchScorePatch:
 
         assert resp.status_code == 404
 
-    def test_propagation_winner_becomes_pair1_of_parent(self, authenticated_client, tournament):
+    def test_propagation_winner_becomes_pair1_of_parent(
+        self, authenticated_client, tournament
+    ):
         bracket = BracketFactory(tournament=tournament)
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
 
-        child_match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="DEMIE_FINALE", match_number=1)
-        parent_match = MatchFactory(bracket=bracket, round="FINALE", match_number=1, child1=child_match)
+        child_match = MatchFactory(
+            bracket=bracket,
+            pair1=pair1,
+            pair2=pair2,
+            round="DEMIE_FINALE",
+            match_number=1,
+        )
+        parent_match = MatchFactory(
+            bracket=bracket, round="FINALE", match_number=1, child1=child_match
+        )
 
         resp = authenticated_client.patch(
             _score_url(tournament.pk, child_match.pk),
@@ -120,13 +132,23 @@ class TestMatchScorePatch:
         parent_match.refresh_from_db()
         assert parent_match.pair1_id == pair1.pk
 
-    def test_propagation_winner_becomes_pair2_of_parent(self, authenticated_client, tournament):
+    def test_propagation_winner_becomes_pair2_of_parent(
+        self, authenticated_client, tournament
+    ):
         bracket = BracketFactory(tournament=tournament)
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
 
-        child_match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="DEMIE_FINALE", match_number=2)
-        parent_match = MatchFactory(bracket=bracket, round="FINALE", match_number=1, child2=child_match)
+        child_match = MatchFactory(
+            bracket=bracket,
+            pair1=pair1,
+            pair2=pair2,
+            round="DEMIE_FINALE",
+            match_number=2,
+        )
+        parent_match = MatchFactory(
+            bracket=bracket, round="FINALE", match_number=1, child2=child_match
+        )
 
         resp = authenticated_client.patch(
             _score_url(tournament.pk, child_match.pk),
@@ -142,7 +164,9 @@ class TestMatchScorePatch:
         bracket = BracketFactory(tournament=tournament)
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
-        finale = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="FINALE", match_number=1)
+        finale = MatchFactory(
+            bracket=bracket, pair1=pair1, pair2=pair2, round="FINALE", match_number=1
+        )
 
         resp = authenticated_client.patch(
             _score_url(tournament.pk, finale.pk),
@@ -151,6 +175,22 @@ class TestMatchScorePatch:
         )
 
         assert resp.status_code == 200
+
+    def test_400_match_is_disabled(self, authenticated_client, tournament):
+        bracket = BracketFactory(tournament=tournament)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match = MatchFactory(
+            bracket=bracket, pair1=pair1, pair2=pair2, round="FINALE", disabled=True
+        )
+
+        resp = authenticated_client.patch(
+            _score_url(tournament.pk, match.pk),
+            {"score": "6/4 7/5", "winner_id": pair1.pk},
+            format="json",
+        )
+
+        assert resp.status_code == 400
 
     def test_winner_persisted_in_db(self, authenticated_client, tournament):
         bracket = BracketFactory(tournament=tournament)

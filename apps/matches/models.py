@@ -57,6 +57,76 @@ class Bracket(TimeStampedModel):
     def __str__(self) -> str:
         return f"Bracket {self.dimension} — {self.tournament}"
 
+    def recompute_placement_flags(self) -> None:
+        """Recompute and persist disabled / pair{1,2}_can_be_placed for every
+        match in this bracket.
+
+        Stateless derived-state recompute, following the same pattern as
+        Tournament.recompute_status(): rather than tracking how a slot was
+        filled (direct placement vs winner propagation), the whole tree is
+        walked from scratch each time the placement endpoint is called.
+
+        Pass 1 (top-down from the root): a match is `disabled` if its parent
+        is disabled, or if the parent's slot pointing to this match is filled
+        with a pair that isn't this match's actual winner (i.e. a bypass
+        placement skipping over this match).
+
+        Pass 2 (after pass 1): a slot can no longer be placed into if the
+        match is disabled, or if the corresponding child subtree already has
+        a placement anywhere in it.
+        """
+        matches = list(self.matches.all())
+        by_id = {m.pk: m for m in matches}
+        root = next(m for m in matches if m.round == Round.FINALE)
+
+        self._compute_disabled(root, by_id)
+        for match in matches:
+            match.pair1_can_be_placed = self._compute_can_be_placed(
+                match, by_id.get(match.child1_id), by_id
+            )
+            match.pair2_can_be_placed = self._compute_can_be_placed(
+                match, by_id.get(match.child2_id), by_id
+            )
+
+        Match.objects.bulk_update(
+            matches, ["disabled", "pair1_can_be_placed", "pair2_can_be_placed"]
+        )
+
+    @staticmethod
+    def _compute_disabled(node: "Match", by_id: dict[int, "Match"]) -> None:
+        """Recursively set `disabled` top-down, starting from the root."""
+        for child_id, parent_slot_pair_id in (
+            (node.child1_id, node.pair1_id),
+            (node.child2_id, node.pair2_id),
+        ):
+            child = by_id.get(child_id)
+            if child is None:
+                continue
+            child.disabled = node.disabled or (
+                parent_slot_pair_id is not None
+                and parent_slot_pair_id != child.winner_id
+            )
+            Bracket._compute_disabled(child, by_id)
+
+    @staticmethod
+    def _compute_can_be_placed(
+        match: "Match", child: "Match | None", by_id: dict[int, "Match"]
+    ) -> bool:
+        if match.disabled:
+            return False
+        return not Bracket._has_placement(child, by_id)
+
+    @staticmethod
+    def _has_placement(node: "Match | None", by_id: dict[int, "Match"]) -> bool:
+        if node is None:
+            return False
+        return (
+            node.pair1_id is not None
+            or node.pair2_id is not None
+            or Bracket._has_placement(by_id.get(node.child1_id), by_id)
+            or Bracket._has_placement(by_id.get(node.child2_id), by_id)
+        )
+
 
 class Match(TimeStampedModel):
     bracket = models.ForeignKey(
@@ -108,6 +178,9 @@ class Match(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="won_matches",
     )
+    disabled = models.BooleanField(default=False)
+    pair1_can_be_placed = models.BooleanField(default=True)
+    pair2_can_be_placed = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["round", "match_number"]

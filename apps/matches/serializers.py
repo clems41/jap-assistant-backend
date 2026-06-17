@@ -25,8 +25,24 @@ class MatchSerializer(serializers.ModelSerializer):
             "score",
             "child1",
             "child2",
+            "disabled",
+            "pair1_can_be_placed",
+            "pair2_can_be_placed",
         ]
-        read_only_fields = ["id", "round", "round_display", "match_number", "pair1", "pair2", "game_format", "child1", "child2"]
+        read_only_fields = [
+            "id",
+            "round",
+            "round_display",
+            "match_number",
+            "pair1",
+            "pair2",
+            "game_format",
+            "child1",
+            "child2",
+            "disabled",
+            "pair1_can_be_placed",
+            "pair2_can_be_placed",
+        ]
 
     def get_child1(self, obj: Match) -> dict | None:
         if obj.child1_id is None:
@@ -42,8 +58,12 @@ class MatchSerializer(serializers.ModelSerializer):
 
 
 # Applied after class definition to resolve the self-referential forward reference.
-MatchSerializer.get_child1 = extend_schema_field(MatchSerializer)(MatchSerializer.get_child1)
-MatchSerializer.get_child2 = extend_schema_field(MatchSerializer)(MatchSerializer.get_child2)
+MatchSerializer.get_child1 = extend_schema_field(MatchSerializer)(
+    MatchSerializer.get_child1
+)
+MatchSerializer.get_child2 = extend_schema_field(MatchSerializer)(
+    MatchSerializer.get_child2
+)
 
 
 class BracketSerializer(serializers.ModelSerializer):
@@ -65,6 +85,11 @@ class MatchScoreSerializer(serializers.Serializer):
 
     def validate(self, attrs: dict) -> dict:
         match: Match = self.context["match"]
+
+        if match.disabled:
+            raise serializers.ValidationError(
+                ["Ce match est désactivé et ne peut pas être joué."]
+            )
 
         if match.pair1_id is None and match.pair2_id is None:
             raise serializers.ValidationError(
@@ -109,19 +134,56 @@ class BracketPlacementSerializer(serializers.Serializer):
             match = matches_map.get(p["match_id"])
             if match is None:
                 raise serializers.ValidationError(
-                    {"match_id": [f"Le match {p['match_id']} n'appartient pas à ce tableau."]}
+                    {
+                        "match_id": [
+                            f"Le match {p['match_id']} n'appartient pas à ce tableau."
+                        ]
+                    }
                 )
             if match.score:
                 raise serializers.ValidationError(
-                    {"match_id": [f"Le match {p['match_id']} a déjà un score enregistré."]}
+                    {
+                        "match_id": [
+                            f"Le match {p['match_id']} a déjà un score enregistré."
+                        ]
+                    }
+                )
+            placing_into_pair1 = (
+                p["pair1_id"] is not None and p["pair1_id"] != match.pair1_id
+            )
+            placing_into_pair2 = (
+                p["pair2_id"] is not None and p["pair2_id"] != match.pair2_id
+            )
+            if (placing_into_pair1 or placing_into_pair2) and match.disabled:
+                raise serializers.ValidationError(
+                    {"match_id": [f"Le match {p['match_id']} est désactivé."]}
+                )
+            if placing_into_pair1 and not match.pair1_can_be_placed:
+                raise serializers.ValidationError(
+                    {
+                        "pair1_id": [
+                            f"Aucune paire ne peut être placée dans cet emplacement "
+                            f"du match {p['match_id']}."
+                        ]
+                    }
+                )
+            if placing_into_pair2 and not match.pair2_can_be_placed:
+                raise serializers.ValidationError(
+                    {
+                        "pair2_id": [
+                            f"Aucune paire ne peut être placée dans cet emplacement "
+                            f"du match {p['match_id']}."
+                        ]
+                    }
                 )
             if p["pair1_id"] is not None and p["pair1_id"] == p["pair2_id"]:
                 raise serializers.ValidationError(
                     ["Une paire ne peut pas être placée deux fois dans le même match."]
                 )
-            for pair_id in (p["pair1_id"], p["pair2_id"]):
-                if pair_id is not None:
-                    pair_ids_in_request.append(pair_id)
+            if placing_into_pair1:
+                pair_ids_in_request.append(p["pair1_id"])
+            if placing_into_pair2:
+                pair_ids_in_request.append(p["pair2_id"])
 
         if pair_ids_in_request:
             valid_pair_ids = set(
@@ -141,7 +203,9 @@ class BracketPlacementSerializer(serializers.Serializer):
             )
 
         existing_pair_ids: set[int] = set()
-        for m in Match.objects.filter(bracket=bracket).exclude(pk__in=requested_match_ids):
+        for m in Match.objects.filter(bracket=bracket).exclude(
+            pk__in=requested_match_ids
+        ):
             if m.pair1_id:
                 existing_pair_ids.add(m.pair1_id)
             if m.pair2_id:

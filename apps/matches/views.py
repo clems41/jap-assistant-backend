@@ -79,7 +79,9 @@ class BracketView(TournamentScopedMixin, APIView):
     @extend_schema(
         responses={200: BracketSerializer},
         parameters=[
-            OpenApiParameter(name="tournament_id", location=OpenApiParameter.PATH, type=int),
+            OpenApiParameter(
+                name="tournament_id", location=OpenApiParameter.PATH, type=int
+            ),
         ],
         summary="Récupérer le tableau principal",
     )
@@ -92,7 +94,9 @@ class BracketView(TournamentScopedMixin, APIView):
         request=BracketGenerateSerializer,
         responses={201: BracketSerializer},
         parameters=[
-            OpenApiParameter(name="tournament_id", location=OpenApiParameter.PATH, type=int),
+            OpenApiParameter(
+                name="tournament_id", location=OpenApiParameter.PATH, type=int
+            ),
         ],
         summary="Générer le tableau principal",
         description=(
@@ -106,9 +110,7 @@ class BracketView(TournamentScopedMixin, APIView):
         tournament = self._tournament
 
         if Bracket.objects.filter(tournament=tournament).exists():
-            raise ConflictError(
-                "Un tableau principal existe déjà pour ce tournoi."
-            )
+            raise ConflictError("Un tableau principal existe déjà pour ce tournoi.")
 
         serializer = BracketGenerateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -129,7 +131,9 @@ class BracketView(TournamentScopedMixin, APIView):
     @extend_schema(
         responses={204: None},
         parameters=[
-            OpenApiParameter(name="tournament_id", location=OpenApiParameter.PATH, type=int),
+            OpenApiParameter(
+                name="tournament_id", location=OpenApiParameter.PATH, type=int
+            ),
         ],
         summary="Supprimer le tableau principal",
         description=(
@@ -151,7 +155,9 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
         request=BracketPlacementSerializer,
         responses={200: BracketSerializer},
         parameters=[
-            OpenApiParameter(name="tournament_id", location=OpenApiParameter.PATH, type=int),
+            OpenApiParameter(
+                name="tournament_id", location=OpenApiParameter.PATH, type=int
+            ),
         ],
         summary="Sauvegarder le placement des paires",
         description=(
@@ -180,6 +186,8 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
                 match.pair2_id = p["pair2_id"]
                 match.save(update_fields=["pair1", "pair2", "updated_at"])
 
+            bracket.recompute_placement_flags()
+
         return Response(BracketSerializer(bracket).data)
 
 
@@ -203,7 +211,9 @@ class MatchScoreView(TournamentScopedMixin, APIView):
         request=MatchScoreSerializer,
         responses={200: MatchSerializer},
         parameters=[
-            OpenApiParameter(name="tournament_id", location=OpenApiParameter.PATH, type=int),
+            OpenApiParameter(
+                name="tournament_id", location=OpenApiParameter.PATH, type=int
+            ),
             OpenApiParameter(name="match_id", location=OpenApiParameter.PATH, type=int),
         ],
         summary="Saisir le score d'un match",

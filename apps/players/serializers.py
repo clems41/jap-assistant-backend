@@ -13,13 +13,34 @@ class PlayerInPairSerializer(serializers.ModelSerializer):
     # validate_phone normalises null → "" so the model CharField (non-nullable) is
     # never given None. default="" handles the field being absent from the payload.
     phone = serializers.CharField(max_length=50, required=False, allow_null=True, allow_blank=True, default="")
+    club = serializers.CharField(max_length=150, required=False, allow_null=True, allow_blank=True, default="")
+    email = serializers.EmailField(required=False, allow_null=True, allow_blank=True, default="")
+    birth_date = serializers.DateField(required=False, allow_null=True, default=None)
 
     class Meta:
         model = Player
-        fields = ["id", "last_name", "first_name", "license_number", "phone", "ranking"]
+        fields = [
+            "id",
+            "last_name",
+            "first_name",
+            "license_number",
+            "phone",
+            "ranking",
+            "birth_date",
+            "club",
+            "email",
+        ]
         read_only_fields = ["id"]
 
     def validate_phone(self, value: str | None) -> str:
+        # Coerce null (allowed by allow_null=True) to empty string.
+        return value or ""
+
+    def validate_club(self, value: str | None) -> str:
+        # Coerce null (allowed by allow_null=True) to empty string.
+        return value or ""
+
+    def validate_email(self, value: str | None) -> str:
         # Coerce null (allowed by allow_null=True) to empty string.
         return value or ""
 
@@ -27,7 +48,17 @@ class PlayerInPairSerializer(serializers.ModelSerializer):
 class PlayerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Player
-        fields = ["id", "last_name", "first_name", "license_number", "phone", "ranking"]
+        fields = [
+            "id",
+            "last_name",
+            "first_name",
+            "license_number",
+            "phone",
+            "ranking",
+            "birth_date",
+            "club",
+            "email",
+        ]
         read_only_fields = ["id"]
 
 
@@ -231,10 +262,12 @@ class PairSerializer(serializers.ModelSerializer):
         player.save()
 
 
-class PairCSVImportSerializer(serializers.Serializer):
+class PairImportSerializer(serializers.Serializer):
     file = serializers.FileField()
 
     def validate_file(self, value):
-        if not value.name.endswith(".csv"):
-            raise serializers.ValidationError("Le fichier doit être au format CSV (.csv).")
+        if not value.name.endswith(".xls"):
+            raise serializers.ValidationError(
+                "Le fichier doit être au format Excel 97-2003 (.xls)."
+            )
         return value

@@ -42,6 +42,9 @@ class Player(TimeStampedModel):
     license_number = models.CharField(max_length=50, unique=True)
     phone = models.CharField(max_length=50, blank=True, default="")
     ranking = models.PositiveIntegerField(null=True, blank=True)
+    birth_date = models.DateField(null=True, blank=True)
+    club = models.CharField(max_length=150, blank=True, default="")
+    email = models.EmailField(blank=True, default="")
 
     class Meta:
         ordering = ["last_name", "first_name"]

@@ -150,3 +150,73 @@ class TestTournamentStatusSetTransition:
 
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.DRAFT
+
+
+# ---------------------------------------------------------------------------
+# TestTournamentStatusStartedFinishedTransitions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestTournamentStatusStartedFinishedTransitions:
+    def test_mark_as_started_from_draft(self) -> None:
+        tournament = TournamentFactory()
+        assert tournament.status == Tournament.Status.DRAFT
+
+        tournament.mark_as_started()
+
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.STARTED
+
+    def test_mark_as_started_from_set(self) -> None:
+        tournament = _tournament_with_config()
+        for i in range(4):
+            PairFactory(tournament=tournament, weight=float(100 + i * 10))
+
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.SET
+
+        tournament.mark_as_started()
+
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.STARTED
+
+    def test_mark_as_started_is_noop_when_already_started(self) -> None:
+        tournament = TournamentFactory()
+
+        tournament.mark_as_started()
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.STARTED
+
+        tournament.mark_as_started()
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.STARTED
+
+    def test_mark_as_started_is_noop_when_already_finished(self) -> None:
+        tournament = TournamentFactory()
+        tournament.status = Tournament.Status.FINISHED
+        tournament.save()
+
+        tournament.mark_as_started()
+
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.FINISHED
+
+    def test_mark_as_finished_from_started(self) -> None:
+        tournament = TournamentFactory()
+        tournament.mark_as_started()
+
+        tournament.mark_as_finished()
+
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.FINISHED
+
+    def test_mark_as_finished_is_noop_when_already_finished(self) -> None:
+        tournament = TournamentFactory()
+        tournament.mark_as_started()
+        tournament.mark_as_finished()
+
+        tournament.mark_as_finished()
+
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.FINISHED

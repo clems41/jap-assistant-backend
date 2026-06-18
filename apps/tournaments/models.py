@@ -139,6 +139,20 @@ class Tournament(TimeStampedModel):
             self.status = new_status
             self.save(update_fields=["status", "updated_at"])
 
+    def mark_as_started(self) -> None:
+        """Transition to STARTED. No-op if already STARTED or FINISHED (terminal states)."""
+        if self.status in (self.Status.STARTED, self.Status.FINISHED):
+            return
+        self.status = self.Status.STARTED
+        self.save(update_fields=["status", "updated_at"])
+
+    def mark_as_finished(self) -> None:
+        """Transition to FINISHED. No-op if already FINISHED."""
+        if self.status == self.Status.FINISHED:
+            return
+        self.status = self.Status.FINISHED
+        self.save(update_fields=["status", "updated_at"])
+
     def _compute_status(self) -> str:
         """Return the status that reflects the current data, without persisting.
 

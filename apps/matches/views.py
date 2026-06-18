@@ -13,7 +13,7 @@ from apps.common.exceptions import ConflictError
 from apps.players.models import Pair
 from apps.tournaments.models import Tournament
 
-from .models import ROUNDS_BY_DIMENSION, Bracket, Match
+from .models import ROUNDS_BY_DIMENSION, Bracket, Match, Round
 from .serializers import (
     BracketGenerateSerializer,
     BracketPlacementSerializer,
@@ -204,6 +204,12 @@ def _propagate_winner(match: Match, winner: Pair) -> None:
         parent_via_child2.save(update_fields=["pair2", "updated_at"])
 
 
+def _advance_tournament_status(match: Match, tournament: Tournament) -> None:
+    tournament.mark_as_started()
+    if match.round == Round.FINALE:
+        tournament.mark_as_finished()
+
+
 class MatchScoreView(TournamentScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 
@@ -238,5 +244,6 @@ class MatchScoreView(TournamentScopedMixin, APIView):
         match.save(update_fields=["score", "winner", "updated_at"])
 
         _propagate_winner(match, winner)
+        _advance_tournament_status(match, tournament)
 
         return Response(MatchSerializer(match).data)

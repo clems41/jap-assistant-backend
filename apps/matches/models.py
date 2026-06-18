@@ -14,6 +14,13 @@ class Round(models.TextChoices):
 
 
 ROUNDS_BY_DIMENSION: dict[int, list[str]] = {
+    2: [
+        Round.FINALE,
+    ],
+    4: [
+        Round.DEMIE_FINALE,
+        Round.FINALE,
+    ],
     8: [
         Round.QUART_DE_FINALE,
         Round.DEMIE_FINALE,
@@ -44,13 +51,25 @@ ROUNDS_BY_DIMENSION: dict[int, list[str]] = {
 
 
 class Bracket(TimeStampedModel):
-    DIMENSION_CHOICES = [(8, "8"), (16, "16"), (32, "32"), (64, "64")]
+    DIMENSION_CHOICES = [(2, "2"), (4, "4"), (8, "8"), (16, "16"), (32, "32"), (64, "64")]
 
-    tournament = models.OneToOneField(
+    tournament = models.ForeignKey(
         Tournament,
         on_delete=models.CASCADE,
-        related_name="bracket",
+        related_name="brackets",
     )
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="children",
+    )
+    source_round = models.CharField(
+        max_length=30, choices=Round.choices, blank=True, default=""
+    )
+    start_place = models.PositiveSmallIntegerField(null=True, blank=True)
+    end_place = models.PositiveSmallIntegerField(null=True, blank=True)
     dimension = models.PositiveSmallIntegerField(choices=DIMENSION_CHOICES)
     nb_pair_round_64 = models.PositiveSmallIntegerField(default=0)
     nb_pair_round_32 = models.PositiveSmallIntegerField(default=0)

@@ -13,7 +13,7 @@ from apps.common.exceptions import ConflictError
 from apps.players.models import Pair
 from apps.tournaments.models import Tournament
 
-from .models import ROUNDS_BY_DIMENSION, Bracket, Match, Round
+from .models import Bracket, Match, Round
 from .serializers import (
     BracketGenerateSerializer,
     BracketPlacementSerializer,
@@ -21,6 +21,7 @@ from .serializers import (
     MatchScoreSerializer,
     MatchSerializer,
 )
+from .services import generate_classification_brackets, generate_match_tree
 
 
 class TournamentScopedMixin:
@@ -32,45 +33,6 @@ class TournamentScopedMixin:
         return get_object_or_404(
             Tournament, pk=self.kwargs["tournament_id"], owner=self.request.user
         )
-
-
-def _generate_matches(bracket: Bracket, tournament: Tournament) -> Match:
-    """Build the match tree bottom-up. Returns the root (finale) match."""
-    rounds = ROUNDS_BY_DIMENSION[bracket.dimension]
-    game_format = tournament.game_format
-
-    current_round_matches: list[Match] = []
-
-    for i, round_name in enumerate(rounds):
-        num_matches = bracket.dimension // (2 ** (i + 1))
-
-        if i == 0:
-            new_matches = [
-                Match.objects.create(
-                    bracket=bracket,
-                    round=round_name,
-                    match_number=j + 1,
-                    game_format=game_format,
-                )
-                for j in range(num_matches)
-            ]
-        else:
-            prev = current_round_matches
-            new_matches = []
-            for j in range(num_matches):
-                m = Match.objects.create(
-                    bracket=bracket,
-                    round=round_name,
-                    match_number=j + 1,
-                    game_format=game_format,
-                    child1=prev[2 * j],
-                    child2=prev[2 * j + 1],
-                )
-                new_matches.append(m)
-
-        current_round_matches = new_matches
-
-    return current_round_matches[0]
 
 
 class BracketView(TournamentScopedMixin, APIView):
@@ -87,7 +49,9 @@ class BracketView(TournamentScopedMixin, APIView):
     )
     def get(self, request: Request, tournament_id: int) -> Response:
         tournament = self._tournament
-        bracket = get_object_or_404(Bracket, tournament=tournament)
+        bracket = get_object_or_404(
+            Bracket, tournament=tournament, parent__isnull=True
+        )
         return Response(BracketSerializer(bracket).data)
 
     @extend_schema(
@@ -114,7 +78,9 @@ class BracketView(TournamentScopedMixin, APIView):
     def post(self, request: Request, tournament_id: int) -> Response:
         tournament = self._tournament
 
-        if Bracket.objects.filter(tournament=tournament).exists():
+        if Bracket.objects.filter(
+            tournament=tournament, parent__isnull=True
+        ).exists():
             raise ConflictError("Un tableau principal existe déjà pour ce tournoi.")
 
         serializer = BracketGenerateSerializer(
@@ -134,7 +100,8 @@ class BracketView(TournamentScopedMixin, APIView):
                 nb_pair_round_8=serializer.validated_data["nb_pair_round_8"],
                 nb_pair_round_4=serializer.validated_data["nb_pair_round_4"],
             )
-            _generate_matches(bracket, tournament)
+            generate_match_tree(bracket, tournament.game_format)
+            generate_classification_brackets(bracket, tournament)
 
         return Response(BracketSerializer(bracket).data, status=status.HTTP_201_CREATED)
 
@@ -159,7 +126,9 @@ class BracketView(TournamentScopedMixin, APIView):
                 "Le tableau ne peut pas être supprimé : le tournoi est terminé."
             )
 
-        bracket = get_object_or_404(Bracket, tournament=tournament)
+        bracket = get_object_or_404(
+            Bracket, tournament=tournament, parent__isnull=True
+        )
         was_started = tournament.status == Tournament.Status.STARTED
         bracket.delete()
         if was_started:
@@ -195,7 +164,9 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
                 "Le placement ne peut plus être modifié : le tournoi est terminé."
             )
 
-        bracket = get_object_or_404(Bracket, tournament=tournament)
+        bracket = get_object_or_404(
+            Bracket, tournament=tournament, parent__isnull=True
+        )
 
         serializer = BracketPlacementSerializer(
             data=request.data,

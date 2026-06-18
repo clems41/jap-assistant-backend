@@ -542,26 +542,26 @@ class TestBracketGenerateSeedingValidation:
 
     def test_201_dimension_64_no_round_restriction(self, authenticated_client, user):
         t = TournamentFactory(owner=user)
-        PairFactory.create_batch(64, tournament=t)
+        PairFactory.create_batch(28, tournament=t)
         resp = authenticated_client.post(
             _bracket_url(t.pk),
             {
                 "dimension": 64,
-                "nb_pair_round_64": 32,
-                "nb_pair_round_32": 16,
+                "nb_pair_round_64": 8,
+                "nb_pair_round_32": 12,
                 "nb_pair_round_16": 8,
-                "nb_pair_round_8": 4,
-                "nb_pair_round_4": 4,
+                "nb_pair_round_8": 0,
+                "nb_pair_round_4": 0,
             },
             format="json",
         )
         assert resp.status_code == 201
         data = resp.json()
-        assert data["nb_pair_round_64"] == 32
-        assert data["nb_pair_round_32"] == 16
+        assert data["nb_pair_round_64"] == 8
+        assert data["nb_pair_round_32"] == 12
         assert data["nb_pair_round_16"] == 8
-        assert data["nb_pair_round_8"] == 4
-        assert data["nb_pair_round_4"] == 4
+        assert data["nb_pair_round_8"] == 0
+        assert data["nb_pair_round_4"] == 0
 
 
 def _walk_nodes(node: dict | None):

@@ -66,8 +66,48 @@ MatchSerializer.get_child2 = extend_schema_field(MatchSerializer)(
 )
 
 
+class ClassificationBracketSerializer(serializers.ModelSerializer):
+    source_round_display = serializers.CharField(
+        source="get_source_round_display", read_only=True
+    )
+    root_match = serializers.SerializerMethodField()
+    children = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Bracket
+        fields = [
+            "id",
+            "dimension",
+            "source_round",
+            "source_round_display",
+            "start_place",
+            "end_place",
+            "root_match",
+            "children",
+        ]
+
+    def get_root_match(self, obj: Bracket) -> dict:
+        root = obj.matches.get(round=Round.FINALE)
+        return MatchSerializer(root).data
+
+    def get_children(self, obj: Bracket) -> list[dict]:
+        children = obj.children.all().order_by("-start_place")
+        return ClassificationBracketSerializer(children, many=True).data
+
+
+# Applied after class definition to resolve the self-referential forward
+# reference, same pattern as MatchSerializer.get_child1/get_child2.
+ClassificationBracketSerializer.get_root_match = extend_schema_field(MatchSerializer)(
+    ClassificationBracketSerializer.get_root_match
+)
+ClassificationBracketSerializer.get_children = extend_schema_field(
+    ClassificationBracketSerializer
+)(ClassificationBracketSerializer.get_children)
+
+
 class BracketSerializer(serializers.ModelSerializer):
     root_match = serializers.SerializerMethodField()
+    classification_brackets = serializers.SerializerMethodField()
 
     class Meta:
         model = Bracket
@@ -80,12 +120,18 @@ class BracketSerializer(serializers.ModelSerializer):
             "nb_pair_round_8",
             "nb_pair_round_4",
             "root_match",
+            "classification_brackets",
         ]
 
     @extend_schema_field(MatchSerializer)
     def get_root_match(self, obj: Bracket) -> dict:
         root = obj.matches.get(round=Round.FINALE)
         return MatchSerializer(root).data
+
+    @extend_schema_field(ClassificationBracketSerializer)
+    def get_classification_brackets(self, obj: Bracket) -> list[dict]:
+        children = obj.children.all().order_by("-start_place")
+        return ClassificationBracketSerializer(children, many=True).data
 
 
 class MatchScoreSerializer(serializers.Serializer):
@@ -314,4 +360,36 @@ class BracketGenerateSerializer(serializers.Serializer):
                     f"au nombre de paires inscrites au tournoi ({pair_count})."
                 ]
             )
+
+        self._validate_structural_capacity(attrs, dimension)
         return attrs
+
+    def _validate_structural_capacity(self, attrs: dict, dimension: int) -> None:
+        """Simulate Step A of the classification-bracket generation algorithm
+        to detect, ahead of time, any nb_pair_round_X configuration that is
+        structurally inconsistent round by round (entering must be even, and
+        real_matches must not exceed the structural cap of that round).
+        """
+        applicable_fields = [
+            field_name
+            for field_name in self.ROUND_FIELDS
+            if self.ROUND_SIZE_BY_FIELD[field_name] <= dimension
+        ]
+
+        carried_winners = 0
+        for index, field_name in enumerate(applicable_fields):
+            new_entrants = attrs[field_name]
+            entering = carried_winners + new_entrants
+            real_matches = entering // 2
+            structural_cap = dimension // (2 ** (index + 1))
+
+            if entering % 2 != 0 or real_matches > structural_cap:
+                round_size = self.ROUND_SIZE_BY_FIELD[field_name]
+                raise serializers.ValidationError(
+                    [
+                        f"La répartition des paires par tour n'est pas cohérente : "
+                        f"le tour {round_size} ne peut pas accueillir plus de "
+                        f"{structural_cap} matchs réels."
+                    ]
+                )
+            carried_winners = real_matches

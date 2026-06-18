@@ -13,6 +13,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.exceptions import ConflictError
 from apps.tournaments.models import Tournament
 
 from .models import Pair, Player
@@ -86,6 +87,8 @@ class PairListCreateView(TournamentScopedMixin, generics.ListCreateAPIView):
         return ctx
 
     def perform_create(self, serializer):
+        if self._tournament.is_locked:
+            raise ConflictError("Les paires ne peuvent plus être modifiées.")
         serializer.save(tournament=self._tournament)
 
 
@@ -102,6 +105,16 @@ class PairDetailView(TournamentScopedMixin, generics.RetrieveUpdateDestroyAPIVie
         ctx = super().get_serializer_context()
         ctx["tournament"] = self._tournament
         return ctx
+
+    def perform_update(self, serializer):
+        if self._tournament.is_locked:
+            raise ConflictError("Les paires ne peuvent plus être modifiées.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if self._tournament.is_locked:
+            raise ConflictError("Les paires ne peuvent plus être modifiées.")
+        instance.delete()
 
 
 class PairCSVImportView(TournamentScopedMixin, APIView):
@@ -132,6 +145,9 @@ class PairCSVImportView(TournamentScopedMixin, APIView):
     )
     def post(self, request: Request, tournament_id: int) -> Response:
         tournament = self._tournament
+
+        if tournament.is_locked:
+            raise ConflictError("Les paires ne peuvent plus être modifiées.")
 
         file_serializer = PairCSVImportSerializer(data=request.data)
         file_serializer.is_valid(raise_exception=True)
@@ -246,6 +262,8 @@ class RankingMatchingView(TournamentScopedMixin, APIView):
         ],
     )
     def get(self, request: Request, tournament_id: int) -> Response:
+        if self._tournament.is_locked:
+            raise ConflictError("Les paires ne peuvent plus être modifiées.")
         pairs = match_and_update_rankings(self._tournament)
         serializer = PairSerializer(
             pairs,

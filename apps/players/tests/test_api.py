@@ -4,6 +4,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
+from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
 
@@ -339,6 +340,22 @@ class TestCreatePair:
         assert response.status_code == 201
         assert response.data["weight"] is None
 
+    def test_create_pair_returns_409_when_tournament_started(self, auth_client, tournament, pair_payload):
+        from apps.players.models import Pair
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+        response = auth_client.post(pairs_url(tournament.id), data=pair_payload, format="json")
+        assert response.status_code == 409
+        assert not Pair.objects.filter(tournament=tournament).exists()
+
+    def test_create_pair_returns_409_when_tournament_finished(self, auth_client, tournament, pair_payload):
+        from apps.players.models import Pair
+        tournament.status = Tournament.Status.FINISHED
+        tournament.save()
+        response = auth_client.post(pairs_url(tournament.id), data=pair_payload, format="json")
+        assert response.status_code == 409
+        assert not Pair.objects.filter(tournament=tournament).exists()
+
 
 # ---------------------------------------------------------------------------
 # TestRetrievePair
@@ -445,6 +462,28 @@ class TestUpdatePair:
         )
         assert response.status_code == 400
 
+    def test_update_pair_returns_409_when_tournament_started(self, auth_client, tournament, pair, pair_payload):
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+        response = auth_client.put(
+            pair_detail_url(tournament.id, pair.id), data=pair_payload, format="json"
+        )
+        assert response.status_code == 409
+        pair.refresh_from_db()
+        assert pair.weight != pair_payload["weight"]
+
+    def test_update_pair_returns_409_when_tournament_finished(self, auth_client, tournament, pair, pair_payload):
+        tournament.status = Tournament.Status.FINISHED
+        tournament.save()
+        response = auth_client.patch(
+            pair_detail_url(tournament.id, pair.id),
+            data={"weight": 999.9},
+            format="json",
+        )
+        assert response.status_code == 409
+        pair.refresh_from_db()
+        assert pair.weight != 999.9
+
 
 # ---------------------------------------------------------------------------
 # TestDeletePair
@@ -472,6 +511,22 @@ class TestDeletePair:
         other_pair = PairFactory(tournament=other_tournament)
         response = auth_client.delete(pair_detail_url(other_tournament.id, other_pair.id))
         assert response.status_code == 404
+
+    def test_delete_pair_returns_409_when_tournament_started(self, auth_client, tournament, pair):
+        from apps.players.models import Pair
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+        response = auth_client.delete(pair_detail_url(tournament.id, pair.id))
+        assert response.status_code == 409
+        assert Pair.objects.filter(id=pair.id).exists()
+
+    def test_delete_pair_returns_409_when_tournament_finished(self, auth_client, tournament, pair):
+        from apps.players.models import Pair
+        tournament.status = Tournament.Status.FINISHED
+        tournament.save()
+        response = auth_client.delete(pair_detail_url(tournament.id, pair.id))
+        assert response.status_code == 409
+        assert Pair.objects.filter(id=pair.id).exists()
 
 
 # ---------------------------------------------------------------------------
@@ -812,6 +867,30 @@ class TestCSVImport:
         assert existing_pair.weight == 150.0, (
             "weight must not be overwritten to None when the CSV weight cell is empty"
         )
+
+    def test_csv_import_returns_409_when_tournament_started(self, auth_client, tournament):
+        from apps.players.models import Pair
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+        content = make_csv_content(
+            {"license_number": "STARTEDCSV001", "license_number2": "STARTEDCSV002"},
+        )
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 409
+        assert not Pair.objects.filter(tournament=tournament).exists()
+
+    def test_csv_import_returns_409_when_tournament_finished(self, auth_client, tournament):
+        from apps.players.models import Pair
+        tournament.status = Tournament.Status.FINISHED
+        tournament.save()
+        content = make_csv_content(
+            {"license_number": "FINISHEDCSV001", "license_number2": "FINISHEDCSV002"},
+        )
+        f = make_csv_file(content)
+        response = auth_client.post(csv_import_url(tournament.id), data={"file": f}, format="multipart")
+        assert response.status_code == 409
+        assert not Pair.objects.filter(tournament=tournament).exists()
 
 
 # ---------------------------------------------------------------------------

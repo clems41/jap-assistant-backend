@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer, CharField, Serializer
 from rest_framework.views import APIView
 
+from apps.common.exceptions import ConflictError
 from apps.tournaments.models import TimeSlot, Tournament
 from apps.tournaments.permissions import IsOwner
 from apps.tournaments.serializers import (
@@ -161,6 +162,16 @@ class TournamentDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return Tournament.objects.filter(owner=self.request.user)
+
+    def perform_update(self, serializer: BaseSerializer) -> None:
+        if serializer.instance.is_locked:
+            raise ConflictError("Ce tournoi ne peut plus être modifié.")
+        serializer.save()
+
+    def perform_destroy(self, instance: Tournament) -> None:
+        if instance.is_locked:
+            raise ConflictError("Ce tournoi ne peut plus être supprimé.")
+        instance.delete()
 
 
 class TournamentGameFormatDurationView(APIView):

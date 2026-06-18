@@ -153,6 +153,24 @@ class Tournament(TimeStampedModel):
         self.status = self.Status.FINISHED
         self.save(update_fields=["status", "updated_at"])
 
+    LOCKED_STATUSES = (Status.STARTED, Status.FINISHED)
+
+    @property
+    def is_locked(self) -> bool:
+        return self.status in self.LOCKED_STATUSES
+
+    @property
+    def is_finished(self) -> bool:
+        return self.status == self.Status.FINISHED
+
+    def revert_to_set(self) -> None:
+        self.status = self.Status.SET
+        self.save(update_fields=["status", "updated_at"])
+
+    def revert_to_started(self) -> None:
+        self.status = self.Status.STARTED
+        self.save(update_fields=["status", "updated_at"])
+
     def _compute_status(self) -> str:
         """Return the status that reflects the current data, without persisting.
 

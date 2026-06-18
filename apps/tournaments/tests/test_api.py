@@ -309,6 +309,70 @@ class TestUpdateTournament:
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
+    def test_patch_started_tournament_returns_409(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.STARTED)
+        response = authenticated_client.patch(
+            DETAIL_URL.format(pk=tournament.pk),
+            {"name": "Should Fail"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_409_CONFLICT
+
+    def test_patch_finished_tournament_returns_409(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.FINISHED)
+        response = authenticated_client.patch(
+            DETAIL_URL.format(pk=tournament.pk),
+            {"name": "Should Fail"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_409_CONFLICT
+
+    def test_put_started_tournament_returns_409(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.STARTED)
+        response = authenticated_client.put(
+            DETAIL_URL.format(pk=tournament.pk), self.UPDATE_PAYLOAD, format="json"
+        )
+        assert response.status_code == status.HTTP_409_CONFLICT
+
+    def test_put_finished_tournament_returns_409(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.FINISHED)
+        response = authenticated_client.put(
+            DETAIL_URL.format(pk=tournament.pk), self.UPDATE_PAYLOAD, format="json"
+        )
+        assert response.status_code == status.HTTP_409_CONFLICT
+
+    def test_patch_draft_tournament_still_succeeds(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """Regression: DRAFT status must remain editable."""
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.DRAFT)
+        response = authenticated_client.patch(
+            DETAIL_URL.format(pk=tournament.pk),
+            {"name": "Patched Name"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_patch_set_tournament_still_succeeds(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """Regression: SET status must remain editable."""
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.SET)
+        response = authenticated_client.patch(
+            DETAIL_URL.format(pk=tournament.pk),
+            {"name": "Patched Name"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+
 
 # ---------------------------------------------------------------------------
 # Delete
@@ -346,6 +410,38 @@ class TestDeleteTournament:
         authenticated_client.delete(DETAIL_URL.format(pk=pk))
         response = authenticated_client.get(DETAIL_URL.format(pk=pk))
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_delete_started_tournament_returns_409(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.STARTED)
+        response = authenticated_client.delete(DETAIL_URL.format(pk=tournament.pk))
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert Tournament.objects.filter(pk=tournament.pk).exists()
+
+    def test_delete_finished_tournament_returns_409(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.FINISHED)
+        response = authenticated_client.delete(DETAIL_URL.format(pk=tournament.pk))
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert Tournament.objects.filter(pk=tournament.pk).exists()
+
+    def test_delete_draft_tournament_still_succeeds(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """Regression: DRAFT status must remain deletable."""
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.DRAFT)
+        response = authenticated_client.delete(DETAIL_URL.format(pk=tournament.pk))
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+    def test_delete_set_tournament_still_succeeds(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """Regression: SET status must remain deletable."""
+        tournament = TournamentFactory(owner=user, status=Tournament.Status.SET)
+        response = authenticated_client.delete(DETAIL_URL.format(pk=tournament.pk))
+        assert response.status_code == status.HTTP_204_NO_CONTENT
 
 
 # ---------------------------------------------------------------------------

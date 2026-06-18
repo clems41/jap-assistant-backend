@@ -68,6 +68,61 @@ def test_empty_tournament_returns_empty_list(client, tournament):
 
 
 # ---------------------------------------------------------------------------
+# Statut du tournoi — blocage si STARTED/FINISHED
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_returns_409_when_tournament_started(client, tournament):
+    player = PlayerFactory(ranking=None)
+    FFTRankingFactory(
+        last_name=player.last_name,
+        first_name=player.first_name,
+        ranking=42,
+        gender=Tournament.Gender.MALE,
+    )
+    partner = PlayerFactory(ranking=None)
+    pair = PairFactory(
+        tournament=tournament, player1=player, player2=partner, weight=None
+    )
+    tournament.status = Tournament.Status.STARTED
+    tournament.save()
+
+    response = client.get(url(tournament.pk))
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    player.refresh_from_db()
+    pair.refresh_from_db()
+    assert player.ranking is None
+    assert pair.weight is None
+
+
+@pytest.mark.django_db
+def test_returns_409_when_tournament_finished(client, tournament):
+    player = PlayerFactory(ranking=None)
+    FFTRankingFactory(
+        last_name=player.last_name,
+        first_name=player.first_name,
+        ranking=42,
+        gender=Tournament.Gender.MALE,
+    )
+    partner = PlayerFactory(ranking=None)
+    pair = PairFactory(
+        tournament=tournament, player1=player, player2=partner, weight=None
+    )
+    tournament.status = Tournament.Status.FINISHED
+    tournament.save()
+
+    response = client.get(url(tournament.pk))
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    player.refresh_from_db()
+    pair.refresh_from_db()
+    assert player.ranking is None
+    assert pair.weight is None
+
+
+# ---------------------------------------------------------------------------
 # Matching — non-écrasement du classement existant
 # ---------------------------------------------------------------------------
 

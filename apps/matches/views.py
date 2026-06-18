@@ -143,8 +143,17 @@ class BracketView(TournamentScopedMixin, APIView):
     )
     def delete(self, request: Request, tournament_id: int) -> Response:
         tournament = self._tournament
+
+        if tournament.is_finished:
+            raise ConflictError(
+                "Le tableau ne peut pas être supprimé : le tournoi est terminé."
+            )
+
         bracket = get_object_or_404(Bracket, tournament=tournament)
+        was_started = tournament.status == Tournament.Status.STARTED
         bracket.delete()
+        if was_started:
+            tournament.revert_to_set()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -170,6 +179,12 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
     )
     def patch(self, request: Request, tournament_id: int) -> Response:
         tournament = self._tournament
+
+        if tournament.is_finished:
+            raise ConflictError(
+                "Le placement ne peut plus être modifié : le tournoi est terminé."
+            )
+
         bracket = get_object_or_404(Bracket, tournament=tournament)
 
         serializer = BracketPlacementSerializer(
@@ -232,6 +247,11 @@ class MatchScoreView(TournamentScopedMixin, APIView):
         tournament = self._tournament
         match = get_object_or_404(Match, pk=match_id, bracket__tournament=tournament)
 
+        if tournament.is_finished and match.round != Round.FINALE:
+            raise ConflictError(
+                "Ce score ne peut plus être modifié : le tournoi est terminé."
+            )
+
         serializer = MatchScoreSerializer(data=request.data, context={"match": match})
         serializer.is_valid(raise_exception=True)
 
@@ -247,3 +267,32 @@ class MatchScoreView(TournamentScopedMixin, APIView):
         _advance_tournament_status(match, tournament)
 
         return Response(MatchSerializer(match).data)
+
+    @extend_schema(
+        responses={204: None},
+        parameters=[
+            OpenApiParameter(
+                name="tournament_id", location=OpenApiParameter.PATH, type=int
+            ),
+            OpenApiParameter(name="match_id", location=OpenApiParameter.PATH, type=int),
+        ],
+        summary="Supprimer le score d'un match",
+        description=(
+            "Supprime le score et le vainqueur d'un match. "
+            "Réservé à la correction du score de la finale une fois le tournoi terminé : "
+            "cette opération fait revenir le tournoi au statut STARTED."
+        ),
+    )
+    def delete(self, request: Request, tournament_id: int, match_id: int) -> Response:
+        tournament = self._tournament
+        match = get_object_or_404(Match, pk=match_id, bracket__tournament=tournament)
+
+        if not (tournament.is_finished and match.round == Round.FINALE):
+            raise ConflictError("Le score de ce match ne peut pas être supprimé.")
+
+        match.score = ""
+        match.winner = None
+        match.save(update_fields=["score", "winner", "updated_at"])
+        tournament.revert_to_started()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -2,6 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.matches.models import Bracket, Match
+from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
 
@@ -338,6 +339,78 @@ class TestBracketDelete:
             format="json",
         )
         authenticated_client.delete(_bracket_url(tournament.pk))
+        resp = authenticated_client.post(
+            _bracket_url(tournament.pk),
+            {"dimension": 16, "nb_top_seeds": 4},
+            format="json",
+        )
+        assert resp.status_code == 201
+        assert resp.json()["dimension"] == 16
+
+    def test_409_when_tournament_finished(self, authenticated_client, tournament):
+        authenticated_client.post(
+            _bracket_url(tournament.pk),
+            {"dimension": 8, "nb_top_seeds": 2},
+            format="json",
+        )
+        tournament.status = Tournament.Status.FINISHED
+        tournament.save()
+
+        resp = authenticated_client.delete(_bracket_url(tournament.pk))
+
+        assert resp.status_code == 409
+        assert Bracket.objects.filter(tournament=tournament).count() == 1
+        assert Match.objects.filter(bracket__tournament=tournament).count() > 0
+
+    def test_returns_204_and_reverts_to_set_when_tournament_started(
+        self, authenticated_client, tournament
+    ):
+        authenticated_client.post(
+            _bracket_url(tournament.pk),
+            {"dimension": 8, "nb_top_seeds": 2},
+            format="json",
+        )
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+
+        resp = authenticated_client.delete(_bracket_url(tournament.pk))
+
+        assert resp.status_code == 204
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.SET
+
+    def test_status_stays_draft_when_deleted_from_draft(
+        self, authenticated_client, tournament
+    ):
+        """The SET-revert must NOT fire outside of STARTED."""
+        authenticated_client.post(
+            _bracket_url(tournament.pk),
+            {"dimension": 8, "nb_top_seeds": 2},
+            format="json",
+        )
+        assert tournament.status == Tournament.Status.DRAFT
+
+        resp = authenticated_client.delete(_bracket_url(tournament.pk))
+
+        assert resp.status_code == 204
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.DRAFT
+
+    def test_can_regenerate_after_deletion_from_started(
+        self, authenticated_client, tournament
+    ):
+        authenticated_client.post(
+            _bracket_url(tournament.pk),
+            {"dimension": 8, "nb_top_seeds": 2},
+            format="json",
+        )
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+
+        authenticated_client.delete(_bracket_url(tournament.pk))
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.SET
+
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
             {"dimension": 16, "nb_top_seeds": 4},

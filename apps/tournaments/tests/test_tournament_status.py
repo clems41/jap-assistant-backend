@@ -220,3 +220,68 @@ class TestTournamentStatusStartedFinishedTransitions:
 
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.FINISHED
+
+
+# ---------------------------------------------------------------------------
+# TestTournamentIsLockedIsFinished
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestTournamentIsLockedIsFinished:
+    @pytest.mark.parametrize(
+        "tournament_status",
+        [Tournament.Status.DRAFT, Tournament.Status.SET, Tournament.Status.READY],
+    )
+    def test_is_locked_false_for_editable_statuses(self, tournament_status) -> None:
+        tournament = TournamentFactory(status=tournament_status)
+        assert tournament.is_locked is False
+
+    @pytest.mark.parametrize(
+        "tournament_status",
+        [Tournament.Status.STARTED, Tournament.Status.FINISHED],
+    )
+    def test_is_locked_true_for_locked_statuses(self, tournament_status) -> None:
+        tournament = TournamentFactory(status=tournament_status)
+        assert tournament.is_locked is True
+
+    @pytest.mark.parametrize(
+        "tournament_status",
+        [
+            Tournament.Status.DRAFT,
+            Tournament.Status.SET,
+            Tournament.Status.READY,
+            Tournament.Status.STARTED,
+        ],
+    )
+    def test_is_finished_false_unless_finished(self, tournament_status) -> None:
+        tournament = TournamentFactory(status=tournament_status)
+        assert tournament.is_finished is False
+
+    def test_is_finished_true_for_finished(self) -> None:
+        tournament = TournamentFactory(status=Tournament.Status.FINISHED)
+        assert tournament.is_finished is True
+
+
+# ---------------------------------------------------------------------------
+# TestTournamentRevertMethods
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestTournamentRevertMethods:
+    def test_revert_to_set_sets_status(self) -> None:
+        tournament = TournamentFactory(status=Tournament.Status.STARTED)
+
+        tournament.revert_to_set()
+
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.SET
+
+    def test_revert_to_started_sets_status(self) -> None:
+        tournament = TournamentFactory(status=Tournament.Status.FINISHED)
+
+        tournament.revert_to_started()
+
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.STARTED

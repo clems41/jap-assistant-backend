@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from apps.matches.models import Bracket, Match, Round
 from apps.players.tests.factories import PairFactory
+from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
 
@@ -777,3 +778,47 @@ class TestBracketPlacementDimension16Cascade:
         quart1.refresh_from_db()
         assert quart1.pair1_id is None
         assert quart1.pair2_id == pairs[1].pk
+
+
+@pytest.mark.django_db
+class TestBracketPlacementStatusRestriction:
+    def test_409_when_tournament_finished(
+        self, authenticated_client, tournament, bracket, leaf_matches, pairs
+    ):
+        tournament.status = Tournament.Status.FINISHED
+        tournament.save()
+
+        payload = {
+            "placements": [
+                {
+                    "match_id": leaf_matches[0].pk,
+                    "pair1_id": pairs[0].pk,
+                    "pair2_id": pairs[1].pk,
+                },
+            ]
+        }
+        resp = authenticated_client.patch(
+            placement_url(tournament.pk), payload, format="json"
+        )
+        assert resp.status_code == 409
+
+    def test_200_when_tournament_started(
+        self, authenticated_client, tournament, bracket, leaf_matches, pairs
+    ):
+        """Explicitly allowed: placement remains editable while STARTED."""
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+
+        payload = {
+            "placements": [
+                {
+                    "match_id": leaf_matches[0].pk,
+                    "pair1_id": pairs[0].pk,
+                    "pair2_id": pairs[1].pk,
+                },
+            ]
+        }
+        resp = authenticated_client.patch(
+            placement_url(tournament.pk), payload, format="json"
+        )
+        assert resp.status_code == 200

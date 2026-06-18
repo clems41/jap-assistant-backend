@@ -209,6 +209,32 @@ class TestMatchScorePatch:
         assert match.winner_id == pair1.pk
         assert match.score == "6/4 7/5"
 
+    def test_409_patch_non_finale_match_when_tournament_finished(
+        self, authenticated_client, tournament
+    ):
+        bracket = BracketFactory(tournament=tournament)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match = MatchFactory(
+            bracket=bracket,
+            pair1=pair1,
+            pair2=pair2,
+            round="DEMIE_FINALE",
+            match_number=1,
+        )
+        tournament.status = Tournament.Status.FINISHED
+        tournament.save()
+
+        resp = authenticated_client.patch(
+            _score_url(tournament.pk, match.pk),
+            {"score": "6/4 7/5", "winner_id": pair1.pk},
+            format="json",
+        )
+
+        assert resp.status_code == 409
+        match.refresh_from_db()
+        assert match.score == ""
+
 
 @pytest.mark.django_db
 class TestMatchScoreTournamentStatus:
@@ -386,3 +412,218 @@ class TestMatchScoreTournamentStatus:
         assert resp.status_code == 400
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.DRAFT
+
+
+@pytest.mark.django_db
+class TestMatchScoreDelete:
+    """DELETE /tournaments/{id}/matches/{match_id}/score/
+
+    Deliberately narrow scope: the only allowed case is correcting the
+    final's score once the tournament is FINISHED (which reverts it to
+    STARTED). Every other combination must return 409.
+    """
+
+    @staticmethod
+    def _finished_tournament_with_untouched_semifinal(tournament):
+        """Build an 8-dimension bracket where only the finale has been
+        scored (reaching FINISHED), leaving one semi-final match
+        unscored/untouched.
+
+        MatchScoreSerializer.validate() does not require child matches to
+        already have scores before the final can be scored — it only checks
+        the match isn't disabled and both pairs are defined. So scoring only
+        the finale directly (bypass-placing pairs into it) is sufficient.
+        """
+        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        finale = MatchFactory(
+            bracket=bracket, pair1=pair1, pair2=pair2, round="FINALE", match_number=1
+        )
+        untouched_semifinal = MatchFactory(
+            bracket=bracket, round="DEMIE_FINALE", match_number=1
+        )
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+        return finale, pair1, pair2, untouched_semifinal
+
+    def test_204_deletes_final_score_and_reverts_to_started(
+        self, authenticated_client, tournament
+    ):
+        finale, pair1, pair2, _ = self._finished_tournament_with_untouched_semifinal(
+            tournament
+        )
+        authenticated_client.patch(
+            _score_url(tournament.pk, finale.pk),
+            {"score": "6/4 7/5", "winner_id": pair1.pk},
+            format="json",
+        )
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.FINISHED
+
+        resp = authenticated_client.delete(_score_url(tournament.pk, finale.pk))
+
+        assert resp.status_code == 204
+        finale.refresh_from_db()
+        assert finale.score == ""
+        assert finale.winner is None
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.STARTED
+
+    def test_409_delete_non_finale_match_while_finished(
+        self, authenticated_client, tournament
+    ):
+        finale, pair1, pair2, untouched_semifinal = (
+            self._finished_tournament_with_untouched_semifinal(tournament)
+        )
+        authenticated_client.patch(
+            _score_url(tournament.pk, finale.pk),
+            {"score": "6/4 7/5", "winner_id": pair1.pk},
+            format="json",
+        )
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.FINISHED
+
+        resp = authenticated_client.delete(
+            _score_url(tournament.pk, untouched_semifinal.pk)
+        )
+
+        assert resp.status_code == 409
+
+    def test_409_delete_final_while_started(self, authenticated_client, tournament):
+        """Defensive/edge-case test: construct a STARTED tournament with a
+        scored final directly (bypassing the normal PATCH flow, which would
+        have moved the tournament to FINISHED), to confirm the guard checks
+        BOTH conditions (tournament.is_finished AND match.round == FINALE)
+        rather than relying on the normal invariant that a scored final
+        implies FINISHED."""
+        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        finale = MatchFactory(
+            bracket=bracket,
+            pair1=pair1,
+            pair2=pair2,
+            round="FINALE",
+            match_number=1,
+            score="6/4 7/5",
+            winner=pair1,
+        )
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+
+        resp = authenticated_client.delete(_score_url(tournament.pk, finale.pk))
+
+        assert resp.status_code == 409
+        finale.refresh_from_db()
+        assert finale.score == "6/4 7/5"
+
+    @pytest.mark.parametrize(
+        "tournament_status", [Tournament.Status.DRAFT, Tournament.Status.SET]
+    )
+    def test_409_delete_final_while_not_started_or_finished(
+        self, authenticated_client, tournament, tournament_status
+    ):
+        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        finale = MatchFactory(
+            bracket=bracket,
+            pair1=pair1,
+            pair2=pair2,
+            round="FINALE",
+            match_number=1,
+            score="6/4 7/5",
+            winner=pair1,
+        )
+        tournament.status = tournament_status
+        tournament.save()
+
+        resp = authenticated_client.delete(_score_url(tournament.pk, finale.pk))
+
+        assert resp.status_code == 409
+
+    def test_409_delete_non_finale_match_while_started(
+        self, authenticated_client, tournament
+    ):
+        """No general delete-while-STARTED feature: a non-final match's
+        score cannot be deleted even while the tournament is STARTED."""
+        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match = MatchFactory(
+            bracket=bracket,
+            pair1=pair1,
+            pair2=pair2,
+            round="DEMIE_FINALE",
+            match_number=1,
+            score="6/4 7/5",
+            winner=pair1,
+        )
+        tournament.status = Tournament.Status.STARTED
+        tournament.save()
+
+        resp = authenticated_client.delete(_score_url(tournament.pk, match.pk))
+
+        assert resp.status_code == 409
+
+    def test_401_unauthenticated(self, client, tournament):
+        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        finale = MatchFactory(
+            bracket=bracket,
+            pair1=pair1,
+            pair2=pair2,
+            round="FINALE",
+            match_number=1,
+            score="6/4 7/5",
+            winner=pair1,
+        )
+        tournament.status = Tournament.Status.FINISHED
+        tournament.save()
+
+        resp = client.delete(_score_url(tournament.pk, finale.pk))
+
+        assert resp.status_code == 401
+
+    def test_404_match_from_another_tournament(
+        self, authenticated_client, tournament, user
+    ):
+        other_tournament = TournamentFactory(owner=user)
+        other_bracket = BracketFactory(tournament=other_tournament)
+        pair1 = PairFactory(tournament=other_tournament)
+        pair2 = PairFactory(tournament=other_tournament)
+        other_match = MatchFactory(bracket=other_bracket, pair1=pair1, pair2=pair2)
+
+        resp = authenticated_client.delete(_score_url(tournament.pk, other_match.pk))
+
+        assert resp.status_code == 404
+
+    def test_round_trip_delete_then_repatch_refinishes_tournament(
+        self, authenticated_client, tournament
+    ):
+        finale, pair1, pair2, _ = self._finished_tournament_with_untouched_semifinal(
+            tournament
+        )
+        authenticated_client.patch(
+            _score_url(tournament.pk, finale.pk),
+            {"score": "6/4 7/5", "winner_id": pair1.pk},
+            format="json",
+        )
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.FINISHED
+
+        authenticated_client.delete(_score_url(tournament.pk, finale.pk))
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.STARTED
+
+        resp = authenticated_client.patch(
+            _score_url(tournament.pk, finale.pk),
+            {"score": "7/5 6/4", "winner_id": pair2.pk},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        tournament.refresh_from_db()
+        assert tournament.status == Tournament.Status.FINISHED

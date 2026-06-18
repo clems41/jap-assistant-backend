@@ -2,6 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.matches.models import Bracket, Match
+from apps.players.tests.factories import PairFactory
 from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
@@ -9,6 +10,16 @@ from apps.users.tests.factories import UserFactory
 
 def _bracket_url(tournament_id: int) -> str:
     return f"/api/v1/tournaments/{tournament_id}/bracket/"
+
+
+def _zero_seeding() -> dict:
+    return {
+        "nb_pair_round_64": 0,
+        "nb_pair_round_32": 0,
+        "nb_pair_round_16": 0,
+        "nb_pair_round_8": 0,
+        "nb_pair_round_4": 0,
+    }
 
 
 def _count_matches(node: dict | None) -> int:
@@ -47,13 +58,17 @@ class TestBracketCreate:
     def test_creates_bracket_dimension_8(self, authenticated_client, tournament):
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         assert resp.status_code == 201
         data = resp.json()
         assert data["dimension"] == 8
-        assert data["nb_top_seeds"] == 2
+        assert data["nb_pair_round_64"] == 0
+        assert data["nb_pair_round_32"] == 0
+        assert data["nb_pair_round_16"] == 0
+        assert data["nb_pair_round_8"] == 0
+        assert data["nb_pair_round_4"] == 0
         root = data["root_match"]
         assert root["round"] == "FINALE"
         assert root["match_number"] == 1
@@ -62,7 +77,7 @@ class TestBracketCreate:
     def test_tree_structure_dimension_8(self, authenticated_client, tournament):
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         root = resp.json()["root_match"]
@@ -84,7 +99,7 @@ class TestBracketCreate:
     def test_pairs_are_null_at_creation(self, authenticated_client, tournament):
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         root = resp.json()["root_match"]
@@ -97,7 +112,7 @@ class TestBracketCreate:
     ):
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         root = resp.json()["root_match"]
@@ -109,7 +124,7 @@ class TestBracketCreate:
     def test_game_format_inherits_from_tournament(self, authenticated_client, user):
         t = TournamentFactory(owner=user, game_format="A1")
         resp = authenticated_client.post(
-            _bracket_url(t.pk), {"dimension": 8, "nb_top_seeds": 2}, format="json"
+            _bracket_url(t.pk), {"dimension": 8, **_zero_seeding()}, format="json"
         )
         assert resp.status_code == 201
         root = resp.json()["root_match"]
@@ -120,7 +135,7 @@ class TestBracketCreate:
     ):
         t = TournamentFactory(owner=user, game_format="")
         resp = authenticated_client.post(
-            _bracket_url(t.pk), {"dimension": 8, "nb_top_seeds": 2}, format="json"
+            _bracket_url(t.pk), {"dimension": 8, **_zero_seeding()}, format="json"
         )
         assert resp.status_code == 201
         root = resp.json()["root_match"]
@@ -133,10 +148,9 @@ class TestBracketCreate:
         self, authenticated_client, user, dimension, expected_matches
     ):
         t = TournamentFactory(owner=user)
-        nb_top_seeds = dimension // 8
         resp = authenticated_client.post(
             _bracket_url(t.pk),
-            {"dimension": dimension, "nb_top_seeds": nb_top_seeds},
+            {"dimension": dimension, **_zero_seeding()},
             format="json",
         )
         assert resp.status_code == 201
@@ -146,7 +160,7 @@ class TestBracketCreate:
     def test_dimension_16_rounds(self, authenticated_client, user):
         t = TournamentFactory(owner=user)
         resp = authenticated_client.post(
-            _bracket_url(t.pk), {"dimension": 16, "nb_top_seeds": 2}, format="json"
+            _bracket_url(t.pk), {"dimension": 16, **_zero_seeding()}, format="json"
         )
         root = resp.json()["root_match"]
         rounds = _collect_rounds(root)
@@ -158,7 +172,7 @@ class TestBracketCreate:
     def test_match_numbers_are_sequential_per_round(self, authenticated_client, user):
         t = TournamentFactory(owner=user)
         resp = authenticated_client.post(
-            _bracket_url(t.pk), {"dimension": 16, "nb_top_seeds": 4}, format="json"
+            _bracket_url(t.pk), {"dimension": 16, **_zero_seeding()}, format="json"
         )
         by_round = _collect_match_numbers_by_round(resp.json()["root_match"])
         assert sorted(by_round["FINALE"]) == [1]
@@ -169,12 +183,12 @@ class TestBracketCreate:
     def test_409_if_bracket_exists(self, authenticated_client, tournament):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         assert resp.status_code == 409
@@ -182,7 +196,7 @@ class TestBracketCreate:
     def test_400_invalid_dimension(self, authenticated_client, tournament):
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 12, "nb_top_seeds": 2},
+            {"dimension": 12, **_zero_seeding()},
             format="json",
         )
         assert resp.status_code == 400
@@ -190,44 +204,15 @@ class TestBracketCreate:
     def test_400_dimension_4_not_allowed(self, authenticated_client, tournament):
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 4, "nb_top_seeds": 1},
+            {"dimension": 4, **_zero_seeding()},
             format="json",
         )
         assert resp.status_code == 400
-
-    def test_400_nb_top_seeds_too_small(self, authenticated_client, tournament):
-        resp = authenticated_client.post(
-            _bracket_url(tournament.pk),
-            {"dimension": 16, "nb_top_seeds": 1},
-            format="json",
-        )
-        assert resp.status_code == 400
-
-    def test_400_nb_top_seeds_too_large(self, authenticated_client, tournament):
-        resp = authenticated_client.post(
-            _bracket_url(tournament.pk),
-            {"dimension": 16, "nb_top_seeds": 9},
-            format="json",
-        )
-        assert resp.status_code == 400
-
-    def test_400_nb_top_seeds_boundary_valid(self, authenticated_client, user):
-        t = TournamentFactory(owner=user)
-        resp = authenticated_client.post(
-            _bracket_url(t.pk), {"dimension": 16, "nb_top_seeds": 2}, format="json"
-        )
-        assert resp.status_code == 201
-
-        t2 = TournamentFactory(owner=user)
-        resp = authenticated_client.post(
-            _bracket_url(t2.pk), {"dimension": 16, "nb_top_seeds": 8}, format="json"
-        )
-        assert resp.status_code == 201
 
     def test_401_unauthenticated(self, client, tournament):
         resp = client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         assert resp.status_code == 401
@@ -238,7 +223,7 @@ class TestBracketCreate:
         other_client.force_authenticate(user=other)
         resp = other_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         assert resp.status_code == 404
@@ -246,7 +231,7 @@ class TestBracketCreate:
     def test_bracket_saved_to_db(self, authenticated_client, tournament):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         assert Bracket.objects.filter(tournament=tournament).count() == 1
@@ -258,7 +243,7 @@ class TestBracketRetrieve:
     def test_get_existing_bracket(self, authenticated_client, tournament):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         resp = authenticated_client.get(_bracket_url(tournament.pk))
@@ -289,7 +274,7 @@ class TestBracketDelete:
     def test_returns_204(self, authenticated_client, tournament):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         resp = authenticated_client.delete(_bracket_url(tournament.pk))
@@ -298,7 +283,7 @@ class TestBracketDelete:
     def test_deletes_bracket_from_db(self, authenticated_client, tournament):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         authenticated_client.delete(_bracket_url(tournament.pk))
@@ -307,7 +292,7 @@ class TestBracketDelete:
     def test_deletes_all_matches_from_db(self, authenticated_client, tournament):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         authenticated_client.delete(_bracket_url(tournament.pk))
@@ -324,7 +309,7 @@ class TestBracketDelete:
     def test_404_non_owner(self, authenticated_client, tournament):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         other_client = APIClient()
@@ -335,13 +320,13 @@ class TestBracketDelete:
     def test_can_regenerate_after_deletion(self, authenticated_client, tournament):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         authenticated_client.delete(_bracket_url(tournament.pk))
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 16, "nb_top_seeds": 4},
+            {"dimension": 16, **_zero_seeding()},
             format="json",
         )
         assert resp.status_code == 201
@@ -350,7 +335,7 @@ class TestBracketDelete:
     def test_409_when_tournament_finished(self, authenticated_client, tournament):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         tournament.status = Tournament.Status.FINISHED
@@ -367,7 +352,7 @@ class TestBracketDelete:
     ):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         tournament.status = Tournament.Status.STARTED
@@ -385,7 +370,7 @@ class TestBracketDelete:
         """The SET-revert must NOT fire outside of STARTED."""
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         assert tournament.status == Tournament.Status.DRAFT
@@ -401,7 +386,7 @@ class TestBracketDelete:
     ):
         authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 8, "nb_top_seeds": 2},
+            {"dimension": 8, **_zero_seeding()},
             format="json",
         )
         tournament.status = Tournament.Status.STARTED
@@ -413,11 +398,170 @@ class TestBracketDelete:
 
         resp = authenticated_client.post(
             _bracket_url(tournament.pk),
-            {"dimension": 16, "nb_top_seeds": 4},
+            {"dimension": 16, **_zero_seeding()},
             format="json",
         )
         assert resp.status_code == 201
         assert resp.json()["dimension"] == 16
+
+
+@pytest.mark.django_db
+class TestBracketGenerateSeedingValidation:
+    def test_201_seeding_sums_to_pairs_count(self, authenticated_client, user):
+        t = TournamentFactory(owner=user)
+        PairFactory.create_batch(8, tournament=t)
+        resp = authenticated_client.post(
+            _bracket_url(t.pk),
+            {
+                "dimension": 16,
+                "nb_pair_round_64": 0,
+                "nb_pair_round_32": 0,
+                "nb_pair_round_16": 4,
+                "nb_pair_round_8": 2,
+                "nb_pair_round_4": 2,
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["nb_pair_round_64"] == 0
+        assert data["nb_pair_round_32"] == 0
+        assert data["nb_pair_round_16"] == 4
+        assert data["nb_pair_round_8"] == 2
+        assert data["nb_pair_round_4"] == 2
+
+    def test_201_zero_pairs_count_with_all_fields_zero(
+        self, authenticated_client, tournament
+    ):
+        resp = authenticated_client.post(
+            _bracket_url(tournament.pk),
+            {"dimension": 8, **_zero_seeding()},
+            format="json",
+        )
+        assert resp.status_code == 201
+
+    def test_400_sum_exceeds_pairs_count_on_first_field(
+        self, authenticated_client, user
+    ):
+        t = TournamentFactory(owner=user)
+        PairFactory.create_batch(4, tournament=t)
+        resp = authenticated_client.post(
+            _bracket_url(t.pk),
+            {
+                "dimension": 8,
+                "nb_pair_round_64": 0,
+                "nb_pair_round_32": 0,
+                "nb_pair_round_16": 0,
+                "nb_pair_round_8": 5,
+                "nb_pair_round_4": 0,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "nb_pair_round_8" in resp.json()["fields"]
+
+    def test_400_sum_exceeds_remaining_after_previous_field(
+        self, authenticated_client, user
+    ):
+        t = TournamentFactory(owner=user)
+        PairFactory.create_batch(8, tournament=t)
+        resp = authenticated_client.post(
+            _bracket_url(t.pk),
+            {
+                "dimension": 32,
+                "nb_pair_round_64": 0,
+                "nb_pair_round_32": 8,
+                "nb_pair_round_16": 1,
+                "nb_pair_round_8": 0,
+                "nb_pair_round_4": 0,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "nb_pair_round_16" in resp.json()["fields"]
+
+    def test_400_sum_below_pairs_count(self, authenticated_client, user):
+        t = TournamentFactory(owner=user)
+        PairFactory.create_batch(8, tournament=t)
+        resp = authenticated_client.post(
+            _bracket_url(t.pk),
+            {
+                "dimension": 16,
+                "nb_pair_round_64": 0,
+                "nb_pair_round_32": 0,
+                "nb_pair_round_16": 4,
+                "nb_pair_round_8": 0,
+                "nb_pair_round_4": 0,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        data = resp.json()
+        assert "fields" not in data or not data.get("fields")
+        assert "8" in data["message"]
+
+    def test_400_round_field_nonzero_for_round_bigger_than_dimension(
+        self, authenticated_client, user
+    ):
+        t = TournamentFactory(owner=user)
+        PairFactory.create_batch(8, tournament=t)
+        resp = authenticated_client.post(
+            _bracket_url(t.pk),
+            {
+                "dimension": 8,
+                "nb_pair_round_64": 1,
+                "nb_pair_round_32": 0,
+                "nb_pair_round_16": 0,
+                "nb_pair_round_8": 7,
+                "nb_pair_round_4": 0,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "nb_pair_round_64" in resp.json()["fields"]
+
+    def test_400_negative_value_on_field(self, authenticated_client, user):
+        t = TournamentFactory(owner=user)
+        PairFactory.create_batch(8, tournament=t)
+        resp = authenticated_client.post(
+            _bracket_url(t.pk),
+            {
+                "dimension": 8,
+                "nb_pair_round_64": 0,
+                "nb_pair_round_32": 0,
+                "nb_pair_round_16": 0,
+                "nb_pair_round_8": -1,
+                "nb_pair_round_4": 0,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        data = resp.json()
+        assert "nb_pair_round_8" in data["fields"]
+        assert "supérieure ou égale à 0" in data["fields"]["nb_pair_round_8"][0]
+
+    def test_201_dimension_64_no_round_restriction(self, authenticated_client, user):
+        t = TournamentFactory(owner=user)
+        PairFactory.create_batch(64, tournament=t)
+        resp = authenticated_client.post(
+            _bracket_url(t.pk),
+            {
+                "dimension": 64,
+                "nb_pair_round_64": 32,
+                "nb_pair_round_32": 16,
+                "nb_pair_round_16": 8,
+                "nb_pair_round_8": 4,
+                "nb_pair_round_4": 4,
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["nb_pair_round_64"] == 32
+        assert data["nb_pair_round_32"] == 16
+        assert data["nb_pair_round_16"] == 8
+        assert data["nb_pair_round_8"] == 4
+        assert data["nb_pair_round_4"] == 4
 
 
 def _walk_nodes(node: dict | None):

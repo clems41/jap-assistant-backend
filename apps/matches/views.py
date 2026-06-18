@@ -102,7 +102,12 @@ class BracketView(TournamentScopedMixin, APIView):
         description=(
             "Génère l'arbre de matchs du tableau principal pour un tournoi. "
             "La dimension (N) définit le nombre de paires au départ (8, 16, 32 ou 64). "
-            "Le nombre de têtes de série doit être compris entre N/8 et N/2. "
+            "Pour chaque tour (nb_pair_round_64, nb_pair_round_32, nb_pair_round_16, "
+            "nb_pair_round_8, nb_pair_round_4), indique combien de paires entrent "
+            "directement dans ce tour sans avoir joué les tours précédents. "
+            "La somme des 5 champs doit être égale au nombre de paires inscrites "
+            "au tournoi, et un champ dont le tour est plus grand que la dimension "
+            "doit être à 0. "
             "Retourne 409 si un tableau existe déjà pour ce tournoi."
         ),
     )
@@ -112,17 +117,22 @@ class BracketView(TournamentScopedMixin, APIView):
         if Bracket.objects.filter(tournament=tournament).exists():
             raise ConflictError("Un tableau principal existe déjà pour ce tournoi.")
 
-        serializer = BracketGenerateSerializer(data=request.data)
+        serializer = BracketGenerateSerializer(
+            data=request.data, context={"tournament": tournament}
+        )
         serializer.is_valid(raise_exception=True)
 
         dimension: int = serializer.validated_data["dimension"]
-        nb_top_seeds: int = serializer.validated_data["nb_top_seeds"]
 
         with transaction.atomic():
             bracket = Bracket.objects.create(
                 tournament=tournament,
                 dimension=dimension,
-                nb_top_seeds=nb_top_seeds,
+                nb_pair_round_64=serializer.validated_data["nb_pair_round_64"],
+                nb_pair_round_32=serializer.validated_data["nb_pair_round_32"],
+                nb_pair_round_16=serializer.validated_data["nb_pair_round_16"],
+                nb_pair_round_8=serializer.validated_data["nb_pair_round_8"],
+                nb_pair_round_4=serializer.validated_data["nb_pair_round_4"],
             )
             _generate_matches(bracket, tournament)
 

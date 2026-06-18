@@ -52,7 +52,11 @@ class Bracket(TimeStampedModel):
         related_name="bracket",
     )
     dimension = models.PositiveSmallIntegerField(choices=DIMENSION_CHOICES)
-    nb_top_seeds = models.PositiveSmallIntegerField()
+    nb_pair_round_64 = models.PositiveSmallIntegerField(default=0)
+    nb_pair_round_32 = models.PositiveSmallIntegerField(default=0)
+    nb_pair_round_16 = models.PositiveSmallIntegerField(default=0)
+    nb_pair_round_8 = models.PositiveSmallIntegerField(default=0)
+    nb_pair_round_4 = models.PositiveSmallIntegerField(default=0)
 
     def __str__(self) -> str:
         return f"Bracket {self.dimension} — {self.tournament}"

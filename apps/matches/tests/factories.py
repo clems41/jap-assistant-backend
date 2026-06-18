@@ -11,7 +11,6 @@ class BracketFactory(DjangoModelFactory):
 
     tournament = factory.SubFactory(TournamentFactory)
     dimension = 8
-    nb_top_seeds = 2
 
 
 class MatchFactory(DjangoModelFactory):

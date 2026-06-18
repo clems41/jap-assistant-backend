@@ -434,7 +434,7 @@ class TestMatchScoreDelete:
         the match isn't disabled and both pairs are defined. So scoring only
         the finale directly (bypass-placing pairs into it) is sufficient.
         """
-        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        bracket = BracketFactory(tournament=tournament, dimension=8)
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
         finale = MatchFactory(
@@ -497,7 +497,7 @@ class TestMatchScoreDelete:
         BOTH conditions (tournament.is_finished AND match.round == FINALE)
         rather than relying on the normal invariant that a scored final
         implies FINISHED."""
-        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        bracket = BracketFactory(tournament=tournament, dimension=8)
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
         finale = MatchFactory(
@@ -524,7 +524,7 @@ class TestMatchScoreDelete:
     def test_409_delete_final_while_not_started_or_finished(
         self, authenticated_client, tournament, tournament_status
     ):
-        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        bracket = BracketFactory(tournament=tournament, dimension=8)
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
         finale = MatchFactory(
@@ -548,7 +548,7 @@ class TestMatchScoreDelete:
     ):
         """No general delete-while-STARTED feature: a non-final match's
         score cannot be deleted even while the tournament is STARTED."""
-        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        bracket = BracketFactory(tournament=tournament, dimension=8)
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
         match = MatchFactory(
@@ -568,7 +568,7 @@ class TestMatchScoreDelete:
         assert resp.status_code == 409
 
     def test_401_unauthenticated(self, client, tournament):
-        bracket = BracketFactory(tournament=tournament, dimension=8, nb_top_seeds=2)
+        bracket = BracketFactory(tournament=tournament, dimension=8)
         pair1 = PairFactory(tournament=tournament)
         pair2 = PairFactory(tournament=tournament)
         finale = MatchFactory(

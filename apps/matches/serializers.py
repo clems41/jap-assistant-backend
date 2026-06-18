@@ -71,7 +71,16 @@ class BracketSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Bracket
-        fields = ["id", "dimension", "nb_top_seeds", "root_match"]
+        fields = [
+            "id",
+            "dimension",
+            "nb_pair_round_64",
+            "nb_pair_round_32",
+            "nb_pair_round_16",
+            "nb_pair_round_8",
+            "nb_pair_round_4",
+            "root_match",
+        ]
 
     @extend_schema_field(MatchSerializer)
     def get_root_match(self, obj: Bracket) -> dict:
@@ -224,8 +233,41 @@ class BracketPlacementSerializer(serializers.Serializer):
 class BracketGenerateSerializer(serializers.Serializer):
     VALID_DIMENSIONS = {8, 16, 32, 64}
 
+    ROUND_FIELDS = [
+        "nb_pair_round_64",
+        "nb_pair_round_32",
+        "nb_pair_round_16",
+        "nb_pair_round_8",
+        "nb_pair_round_4",
+    ]
+    ROUND_SIZE_BY_FIELD = {
+        "nb_pair_round_64": 64,
+        "nb_pair_round_32": 32,
+        "nb_pair_round_16": 16,
+        "nb_pair_round_8": 8,
+        "nb_pair_round_4": 4,
+    }
+
+    MIN_VALUE_ERROR_MESSAGE = (
+        "Assurez-vous que cette valeur est supérieure ou égale à 0."
+    )
+
     dimension = serializers.IntegerField()
-    nb_top_seeds = serializers.IntegerField()
+    nb_pair_round_64 = serializers.IntegerField(
+        min_value=0, error_messages={"min_value": MIN_VALUE_ERROR_MESSAGE}
+    )
+    nb_pair_round_32 = serializers.IntegerField(
+        min_value=0, error_messages={"min_value": MIN_VALUE_ERROR_MESSAGE}
+    )
+    nb_pair_round_16 = serializers.IntegerField(
+        min_value=0, error_messages={"min_value": MIN_VALUE_ERROR_MESSAGE}
+    )
+    nb_pair_round_8 = serializers.IntegerField(
+        min_value=0, error_messages={"min_value": MIN_VALUE_ERROR_MESSAGE}
+    )
+    nb_pair_round_4 = serializers.IntegerField(
+        min_value=0, error_messages={"min_value": MIN_VALUE_ERROR_MESSAGE}
+    )
 
     def validate_dimension(self, value: int) -> int:
         if value not in self.VALID_DIMENSIONS:
@@ -236,22 +278,40 @@ class BracketGenerateSerializer(serializers.Serializer):
 
     def validate(self, attrs: dict) -> dict:
         dimension = attrs.get("dimension")
-        nb_top_seeds = attrs.get("nb_top_seeds")
-
-        if dimension is None or nb_top_seeds is None:
+        if dimension is None:
             return attrs
 
-        min_seeds = dimension // 8
-        max_seeds = dimension // 2
+        pair_count = self.context["tournament"].pairs_count
 
-        if not (min_seeds <= nb_top_seeds <= max_seeds):
+        field_errors: dict[str, list[str]] = {}
+        remaining = pair_count
+        for field_name in self.ROUND_FIELDS:
+            value = attrs.get(field_name)
+            if value is None:
+                continue
+            round_size = self.ROUND_SIZE_BY_FIELD[field_name]
+
+            if round_size > dimension and value != 0:
+                field_errors[field_name] = [
+                    f"Ce champ doit être à 0 : le tour correspondant n'existe pas "
+                    f"pour une dimension {dimension}."
+                ]
+                continue
+            if value > remaining:
+                field_errors[field_name] = [
+                    f"Cette valeur ne peut pas dépasser {remaining} (paires restantes)."
+                ]
+            remaining -= value
+
+        if field_errors:
+            raise serializers.ValidationError(field_errors)
+
+        total = sum(attrs[f] for f in self.ROUND_FIELDS)
+        if total != pair_count:
             raise serializers.ValidationError(
-                {
-                    "nb_top_seeds": (
-                        f"Le nombre de têtes de série doit être compris entre "
-                        f"{min_seeds} et {max_seeds} pour une dimension {dimension}."
-                    )
-                }
+                [
+                    f"La somme des paires placées par tour ({total}) doit être égale "
+                    f"au nombre de paires inscrites au tournoi ({pair_count})."
+                ]
             )
-
         return attrs

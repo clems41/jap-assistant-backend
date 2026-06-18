@@ -12,11 +12,21 @@ def placement_url(tournament_id: int) -> str:
     return f"/api/v1/tournaments/{tournament_id}/bracket/placement/"
 
 
+def _zero_seeding() -> dict:
+    return {
+        "nb_pair_round_64": 0,
+        "nb_pair_round_32": 0,
+        "nb_pair_round_16": 0,
+        "nb_pair_round_8": 0,
+        "nb_pair_round_4": 0,
+    }
+
+
 @pytest.fixture
 def bracket(authenticated_client, tournament):
     authenticated_client.post(
         f"/api/v1/tournaments/{tournament.pk}/bracket/",
-        {"dimension": 8, "nb_top_seeds": 2},
+        {"dimension": 8, **_zero_seeding()},
         format="json",
     )
     return Bracket.objects.get(tournament=tournament)
@@ -145,9 +155,7 @@ class TestBracketPlacement:
         self, authenticated_client, tournament, bracket, pairs
     ):
         other_tournament = TournamentFactory(owner=tournament.owner)
-        other_bracket = Bracket.objects.create(
-            tournament=other_tournament, dimension=8, nb_top_seeds=2
-        )
+        other_bracket = Bracket.objects.create(tournament=other_tournament, dimension=8)
         other_match = Match.objects.create(
             bracket=other_bracket,
             round=Round.QUART_DE_FINALE,
@@ -649,7 +657,7 @@ class TestBracketPlacementDimension16Cascade:
     def bracket16(self, authenticated_client, tournament):
         authenticated_client.post(
             f"/api/v1/tournaments/{tournament.pk}/bracket/",
-            {"dimension": 16, "nb_top_seeds": 2},
+            {"dimension": 16, **_zero_seeding()},
             format="json",
         )
         return Bracket.objects.get(tournament=tournament)

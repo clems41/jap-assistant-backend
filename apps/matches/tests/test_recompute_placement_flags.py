@@ -243,7 +243,7 @@ class TestRecomputePlacementFlagsDimension16:
 
     @pytest.fixture
     def tree(self, tournament):
-        bracket = BracketFactory(tournament=tournament, dimension=16, nb_top_seeds=2)
+        bracket = BracketFactory(tournament=tournament, dimension=16)
 
         huit = [
             MatchFactory(

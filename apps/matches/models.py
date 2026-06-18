@@ -50,6 +50,20 @@ ROUNDS_BY_DIMENSION: dict[int, list[str]] = {
 }
 
 
+def _place_range_label(start_place: int, dimension: int, round_name: str) -> str:
+    """Return the "Places X-Y" label for `round_name` within a classification
+    bracket of `dimension` starting at `start_place`.
+
+    Shared by `Match.get_display_round()` (applied to a match's own bracket)
+    and `Bracket.get_display_source_round()` (applied to a classification
+    bracket's parent, when that parent is itself a classification bracket).
+    """
+    rounds = ROUNDS_BY_DIMENSION[dimension]
+    round_index = rounds.index(round_name)
+    end_place = start_place + dimension // (2**round_index) - 1
+    return f"Places {start_place}-{end_place}"
+
+
 class Bracket(TimeStampedModel):
     DIMENSION_CHOICES = [(2, "2"), (4, "4"), (8, "8"), (16, "16"), (32, "32"), (64, "64")]
 
@@ -79,6 +93,25 @@ class Bracket(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Bracket {self.dimension} — {self.tournament}"
+
+    def get_display_source_round(self) -> str:
+        """Return the user-facing label for `source_round`.
+
+        `source_round` names the round of `self.parent` whose losers
+        cascade into this classification bracket. When the parent is the
+        main bracket, the generic Round label ("Seizièmes", "Quarts"...)
+        is correct and used as-is. When the parent is itself a
+        classification bracket (cascade of depth 2+), that round is
+        displayed on the parent's matches as a "Places X-Y" label (see
+        `Match.get_display_round()`), so `source_round_display` must match
+        it instead of falling back to the generic label.
+        """
+        if self.parent is None or self.parent.start_place is None:
+            return self.get_source_round_display()
+
+        return _place_range_label(
+            self.parent.start_place, self.parent.dimension, self.source_round
+        )
 
     def recompute_placement_flags(self) -> None:
         """Recompute and persist disabled / pair{1,2}_can_be_placed for every
@@ -210,3 +243,18 @@ class Match(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.get_round_display()} #{self.match_number}"
+
+    def get_display_round(self) -> str:
+        """Return the user-facing round label.
+
+        For classification brackets (`bracket.start_place is not None`),
+        the label reflects the range of places still at stake at this
+        round, e.g. "Places 13-16" then "Places 13-14", rather than the
+        generic Round label ("Demies", "Finale"...). The main bracket is
+        unaffected and keeps the standard `get_round_display()` label.
+        """
+        start_place = self.bracket.start_place
+        if start_place is None:
+            return self.get_round_display()
+
+        return _place_range_label(start_place, self.bracket.dimension, self.round)

@@ -7,7 +7,7 @@ from .models import Bracket, Match, Round
 
 
 class MatchSerializer(serializers.ModelSerializer):
-    round_display = serializers.CharField(source="get_round_display", read_only=True)
+    round_display = serializers.CharField(source="get_display_round", read_only=True)
     child1 = serializers.SerializerMethodField()
     child2 = serializers.SerializerMethodField()
 
@@ -68,7 +68,7 @@ MatchSerializer.get_child2 = extend_schema_field(MatchSerializer)(
 
 class ClassificationBracketSerializer(serializers.ModelSerializer):
     source_round_display = serializers.CharField(
-        source="get_source_round_display", read_only=True
+        source="get_display_source_round", read_only=True
     )
     root_match = serializers.SerializerMethodField()
     children = serializers.SerializerMethodField()

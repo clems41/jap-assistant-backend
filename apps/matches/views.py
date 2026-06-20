@@ -193,17 +193,31 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
         return Response(BracketSerializer(bracket).data)
 
 
-def _propagate_winner(match: Match, winner: Pair) -> None:
+def _find_parent_slot(match: Match) -> tuple[Match, str] | None:
+    """Return (parent_match, slot_name) where slot_name is "pair1" or
+    "pair2" — the slot on the match `match` feeds into (the match this
+    match's winner is/was propagated into) — or None if `match` is the
+    FINALE (root, no parent).
+    """
     parent_via_child1 = match.parent_as_child1.first()
     if parent_via_child1 is not None:
-        parent_via_child1.pair1 = winner
-        parent_via_child1.save(update_fields=["pair1", "updated_at"])
-        return
+        return parent_via_child1, "pair1"
 
     parent_via_child2 = match.parent_as_child2.first()
     if parent_via_child2 is not None:
-        parent_via_child2.pair2 = winner
-        parent_via_child2.save(update_fields=["pair2", "updated_at"])
+        return parent_via_child2, "pair2"
+
+    return None
+
+
+def _propagate_winner(match: Match, winner: Pair) -> None:
+    parent_slot = _find_parent_slot(match)
+    if parent_slot is None:
+        return
+
+    parent, slot = parent_slot
+    setattr(parent, slot, winner)
+    parent.save(update_fields=[slot, "updated_at"])
 
 
 def _advance_tournament_status(match: Match, tournament: Tournament) -> None:
@@ -265,21 +279,38 @@ class MatchScoreView(TournamentScopedMixin, APIView):
         ],
         summary="Supprimer le score d'un match",
         description=(
-            "Supprime le score et le vainqueur d'un match. "
-            "Réservé à la correction du score de la finale une fois le tournoi terminé : "
-            "cette opération fait revenir le tournoi au statut STARTED."
+            "Supprime le score et le vainqueur d'un match, et annule la propagation "
+            "de ce vainqueur dans le match suivant (le slot pair1/pair2 concerné est "
+            "remis à null). Le score d'un match ne peut être supprimé que si le match "
+            "suivant n'a pas encore de vainqueur — retourne 409 sinon. La finale n'a "
+            "pas de match suivant : son score peut donc toujours être supprimé, ce qui "
+            "fait revenir le tournoi au statut STARTED. La suppression du score d'un "
+            "autre match ne modifie pas le statut du tournoi."
         ),
     )
     def delete(self, request: Request, tournament_id: int, match_id: int) -> Response:
         tournament = self._tournament
         match = get_object_or_404(Match, pk=match_id, bracket__tournament=tournament)
 
-        if not (tournament.is_finished and match.round == Round.FINALE):
-            raise ConflictError("Le score de ce match ne peut pas être supprimé.")
+        parent_slot = _find_parent_slot(match)
+        if parent_slot is not None:
+            parent, slot = parent_slot
+            if parent.winner_id is not None:
+                raise ConflictError(
+                    "Le score de ce match ne peut pas être supprimé : "
+                    "le match suivant a déjà un vainqueur."
+                )
 
         match.score = ""
         match.winner = None
         match.save(update_fields=["score", "winner", "updated_at"])
-        tournament.revert_to_started()
+
+        if parent_slot is not None:
+            parent, slot = parent_slot
+            setattr(parent, slot, None)
+            parent.save(update_fields=[slot, "updated_at"])
+
+        if match.round == Round.FINALE:
+            tournament.revert_to_started()
 
         return Response(status=status.HTTP_204_NO_CONTENT)

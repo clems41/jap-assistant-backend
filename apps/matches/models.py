@@ -299,6 +299,11 @@ class Bracket(TimeStampedModel):
 
 
 class Match(TimeStampedModel):
+    class Status(models.TextChoices):
+        UPCOMING = "UPCOMING", "À venir"
+        STARTED = "STARTED", "En cours"
+        FINISHED = "FINISHED", "Terminé"
+
     bracket = models.ForeignKey(
         Bracket,
         on_delete=models.CASCADE,
@@ -351,6 +356,12 @@ class Match(TimeStampedModel):
     disabled = models.BooleanField(default=False)
     pair1_can_be_placed = models.BooleanField(default=True)
     pair2_can_be_placed = models.BooleanField(default=True)
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.UPCOMING,
+    )
+    finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["round", "match_number"]

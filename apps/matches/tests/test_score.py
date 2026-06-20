@@ -307,6 +307,28 @@ class TestMatchScorePatch:
         assert match.winner_id == pair1.pk
         assert match.score == "6/4 7/5"
 
+    def test_patch_sets_status_finished_and_finished_at(
+        self, authenticated_client, tournament
+    ):
+        bracket = BracketFactory(tournament=tournament)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="FINALE")
+
+        resp = authenticated_client.patch(
+            _score_url(tournament.pk, match.pk),
+            {"score": "6/4 7/5", "winner_id": pair1.pk},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "FINISHED"
+        assert data["finished_at"] is not None
+        match.refresh_from_db()
+        assert match.status == Match.Status.FINISHED
+        assert match.finished_at is not None
+
     def test_409_patch_non_finale_match_when_tournament_finished(
         self, authenticated_client, tournament
     ):
@@ -540,6 +562,8 @@ class TestMatchScoreDelete:
         finale.refresh_from_db()
         assert finale.score == ""
         assert finale.winner is None
+        assert finale.status == Match.Status.UPCOMING
+        assert finale.finished_at is None
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.STARTED
 

@@ -121,6 +121,19 @@ class TestBracketCreate:
             assert m["pair1_can_be_placed"] is True
             assert m["pair2_can_be_placed"] is True
 
+    def test_status_defaults_to_upcoming_at_creation(
+        self, authenticated_client, tournament
+    ):
+        resp = authenticated_client.post(
+            _bracket_url(tournament.pk),
+            {"dimension": 8, **_zero_seeding()},
+            format="json",
+        )
+        root = resp.json()["root_match"]
+        for m in _walk_nodes(root):
+            assert m["status"] == "UPCOMING"
+            assert m["finished_at"] is None
+
     def test_game_format_inherits_from_tournament(self, authenticated_client, user):
         t = TournamentFactory(owner=user, game_format="A1")
         resp = authenticated_client.post(

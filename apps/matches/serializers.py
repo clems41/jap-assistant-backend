@@ -8,6 +8,7 @@ from .models import Bracket, Match, Round
 
 class MatchSerializer(serializers.ModelSerializer):
     round_display = serializers.CharField(source="get_display_round", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
     child1 = serializers.SerializerMethodField()
     child2 = serializers.SerializerMethodField()
 
@@ -28,6 +29,9 @@ class MatchSerializer(serializers.ModelSerializer):
             "disabled",
             "pair1_can_be_placed",
             "pair2_can_be_placed",
+            "status",
+            "status_display",
+            "finished_at",
         ]
         read_only_fields = [
             "id",
@@ -42,6 +46,9 @@ class MatchSerializer(serializers.ModelSerializer):
             "disabled",
             "pair1_can_be_placed",
             "pair2_can_be_placed",
+            "status",
+            "status_display",
+            "finished_at",
         ]
 
     def get_child1(self, obj: Match) -> dict | None:

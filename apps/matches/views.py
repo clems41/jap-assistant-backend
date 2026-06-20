@@ -2,6 +2,7 @@ import functools
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -226,6 +227,52 @@ def _advance_tournament_status(match: Match, tournament: Tournament) -> None:
         tournament.mark_as_finished()
 
 
+class MatchStartView(TournamentScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={200: MatchSerializer},
+        parameters=[
+            OpenApiParameter(
+                name="tournament_id", location=OpenApiParameter.PATH, type=int
+            ),
+            OpenApiParameter(name="match_id", location=OpenApiParameter.PATH, type=int),
+        ],
+        summary="Lancer un match",
+        description=(
+            "Fait passer un match du statut UPCOMING à STARTED. "
+            "Retourne 409 si le match a déjà été lancé ou est terminé, s'il est "
+            "désactivé, si l'une des deux paires n'est pas encore définie, ou si "
+            "le tournoi est terminé (sauf pour la finale)."
+        ),
+    )
+    def post(self, request: Request, tournament_id: int, match_id: int) -> Response:
+        tournament = self._tournament
+        match = get_object_or_404(Match, pk=match_id, bracket__tournament=tournament)
+
+        if tournament.is_finished and match.round != Round.FINALE:
+            raise ConflictError(
+                "Ce match ne peut plus être lancé : le tournoi est terminé."
+            )
+
+        if match.status != Match.Status.UPCOMING:
+            raise ConflictError("Ce match a déjà été lancé ou est terminé.")
+
+        if match.disabled:
+            raise ConflictError("Ce match est désactivé et ne peut pas être lancé.")
+
+        if match.pair1_id is None or match.pair2_id is None:
+            raise ConflictError(
+                "Les deux paires du match doivent être définies avant de "
+                "pouvoir le lancer."
+            )
+
+        match.status = Match.Status.STARTED
+        match.save(update_fields=["status", "updated_at"])
+
+        return Response(MatchSerializer(match).data)
+
+
 class MatchScoreView(TournamentScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 
@@ -262,7 +309,11 @@ class MatchScoreView(TournamentScopedMixin, APIView):
         winner = Pair.objects.get(pk=winner_id)
         match.score = score
         match.winner = winner
-        match.save(update_fields=["score", "winner", "updated_at"])
+        match.status = Match.Status.FINISHED
+        match.finished_at = timezone.now()
+        match.save(
+            update_fields=["score", "winner", "status", "finished_at", "updated_at"]
+        )
 
         _propagate_winner(match, winner)
         _advance_tournament_status(match, tournament)
@@ -303,7 +354,11 @@ class MatchScoreView(TournamentScopedMixin, APIView):
 
         match.score = ""
         match.winner = None
-        match.save(update_fields=["score", "winner", "updated_at"])
+        match.status = Match.Status.UPCOMING
+        match.finished_at = None
+        match.save(
+            update_fields=["score", "winner", "status", "finished_at", "updated_at"]
+        )
 
         if parent_slot is not None:
             parent, slot = parent_slot

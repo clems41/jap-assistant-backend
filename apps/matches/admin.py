@@ -21,6 +21,14 @@ class BracketAdmin(admin.ModelAdmin):
 
 @admin.register(Match)
 class MatchAdmin(admin.ModelAdmin):
-    list_display = ["bracket", "round", "match_number", "pair1", "pair2", "game_format"]
-    list_filter = ["round", "game_format"]
+    list_display = [
+        "bracket",
+        "round",
+        "match_number",
+        "pair1",
+        "pair2",
+        "game_format",
+        "status",
+    ]
+    list_filter = ["round", "status", "game_format"]
     raw_id_fields = ["bracket", "pair1", "pair2", "child1", "child2"]

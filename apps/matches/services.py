@@ -1,6 +1,14 @@
 from apps.tournaments.models import Tournament
 
-from .models import ROUNDS_BY_DIMENSION, Bracket, Match
+from .models import ROUNDS_BY_DIMENSION, Bracket, Match, Round
+
+ROUND_BY_SIZE: dict[int, str] = {
+    64: Round.TRENTE_DEUXIEME_DE_FINALE,
+    32: Round.SEIZIEME_DE_FINALE,
+    16: Round.HUITIEME_DE_FINALE,
+    8: Round.QUART_DE_FINALE,
+    4: Round.DEMIE_FINALE,
+}
 
 
 def generate_match_tree(bracket: Bracket, game_format: str) -> Match:
@@ -39,6 +47,39 @@ def generate_match_tree(bracket: Bracket, game_format: str) -> Match:
         current_round_matches = new_matches
 
     return current_round_matches[0]
+
+
+def place_top_seeds(bracket: Bracket, tournament: Tournament) -> None:
+    """Place TS1/TS2 (têtes de série) into the main bracket per FFT rules:
+    TS1 is the pair with the lowest weight, TS2 the second-lowest. They
+    enter at the round corresponding to the smallest nonzero
+    nb_pair_round_X, with TS1 in pair2 of that round's last match and TS2
+    in pair1 of its first match.
+    """
+    round_size = next(
+        (
+            size
+            for size in sorted(ROUND_BY_SIZE)
+            if getattr(bracket, f"nb_pair_round_{size}") > 0
+        ),
+        None,
+    )
+    if round_size is None:
+        return
+
+    top_seed, second_seed = tournament.pairs.order_by("weight", "id")[:2]
+    round_name = ROUND_BY_SIZE[round_size]
+    num_matches = round_size // 2
+
+    bottom_match = Match.objects.get(
+        bracket=bracket, round=round_name, match_number=num_matches
+    )
+    bottom_match.pair2 = top_seed
+    bottom_match.save(update_fields=["pair2", "updated_at"])
+
+    top_match = Match.objects.get(bracket=bracket, round=round_name, match_number=1)
+    top_match.pair1 = second_seed
+    top_match.save(update_fields=["pair1", "updated_at"])
 
 
 def generate_classification_brackets(

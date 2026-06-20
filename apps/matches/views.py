@@ -21,7 +21,11 @@ from .serializers import (
     MatchScoreSerializer,
     MatchSerializer,
 )
-from .services import generate_classification_brackets, generate_match_tree
+from .services import (
+    generate_classification_brackets,
+    generate_match_tree,
+    place_top_seeds,
+)
 
 
 class TournamentScopedMixin:
@@ -101,6 +105,8 @@ class BracketView(TournamentScopedMixin, APIView):
                 nb_pair_round_4=serializer.validated_data["nb_pair_round_4"],
             )
             generate_match_tree(bracket, tournament.game_format)
+            place_top_seeds(bracket, tournament)
+            bracket.recompute_placement_flags()
             generate_classification_brackets(bracket, tournament)
 
         return Response(BracketSerializer(bracket).data, status=status.HTTP_201_CREATED)

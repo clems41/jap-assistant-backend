@@ -340,3 +340,241 @@ class TestRecomputePlacementFlagsDimension16:
             assert m.disabled is False
             assert m.pair1_can_be_placed is True
             assert m.pair2_can_be_placed is True
+
+
+@pytest.mark.django_db
+class TestRecomputePlacementFlagsStructuralConstraint:
+    """Structural constraint driven purely by nb_pair_round_X, independent
+    of any actual pair placement, for every round other than the "premier
+    tour" (the largest round size with a nonzero nb_pair_round_X):
+
+    - when a round's nonzero nb_pair_round_X exactly matches its number of
+      active matches, each of those matches is forced to accept a
+      placement on only one side, and the entire subtree feeding the
+      other side is force-disabled.
+    - when a round's nb_pair_round_X is 0, no pair is ever meant to enter
+      it directly, so both placement slots are locked on every active
+      match in it (the match itself stays active, to be decided by its
+      sub-match winners)."""
+
+    @pytest.fixture
+    def tree_dim8(self, tournament):
+        bracket = BracketFactory(tournament=tournament)
+        quart1 = MatchFactory(
+            bracket=bracket, round=Round.QUART_DE_FINALE, match_number=1
+        )
+        quart2 = MatchFactory(
+            bracket=bracket, round=Round.QUART_DE_FINALE, match_number=2
+        )
+        quart3 = MatchFactory(
+            bracket=bracket, round=Round.QUART_DE_FINALE, match_number=3
+        )
+        quart4 = MatchFactory(
+            bracket=bracket, round=Round.QUART_DE_FINALE, match_number=4
+        )
+        demie1 = MatchFactory(
+            bracket=bracket,
+            round=Round.DEMIE_FINALE,
+            match_number=1,
+            child1=quart1,
+            child2=quart2,
+        )
+        demie2 = MatchFactory(
+            bracket=bracket,
+            round=Round.DEMIE_FINALE,
+            match_number=2,
+            child1=quart3,
+            child2=quart4,
+        )
+        finale = MatchFactory(
+            bracket=bracket,
+            round=Round.FINALE,
+            match_number=1,
+            child1=demie1,
+            child2=demie2,
+        )
+        return {
+            "bracket": bracket,
+            "quart1": quart1,
+            "quart2": quart2,
+            "quart3": quart3,
+            "quart4": quart4,
+            "demie1": demie1,
+            "demie2": demie2,
+            "finale": finale,
+        }
+
+    def test_minimal_two_round_constraint_forces_pair1_and_pair2_only(self, tree_dim8):
+        bracket = tree_dim8["bracket"]
+        bracket.nb_pair_round_8 = 2
+        bracket.nb_pair_round_4 = 2
+        bracket.save(update_fields=["nb_pair_round_8", "nb_pair_round_4"])
+
+        bracket.recompute_placement_flags()
+
+        tree_dim8["demie1"].refresh_from_db()
+        tree_dim8["demie2"].refresh_from_db()
+        tree_dim8["quart1"].refresh_from_db()
+        tree_dim8["quart2"].refresh_from_db()
+        tree_dim8["quart3"].refresh_from_db()
+        tree_dim8["quart4"].refresh_from_db()
+
+        assert tree_dim8["demie1"].pair1_can_be_placed is True
+        assert tree_dim8["demie1"].pair2_can_be_placed is False
+        assert tree_dim8["demie2"].pair1_can_be_placed is False
+        assert tree_dim8["demie2"].pair2_can_be_placed is True
+
+        assert tree_dim8["quart1"].disabled is True
+        assert tree_dim8["quart4"].disabled is True
+
+        assert tree_dim8["quart2"].disabled is False
+        assert tree_dim8["quart2"].pair1_can_be_placed is True
+        assert tree_dim8["quart2"].pair2_can_be_placed is True
+
+        assert tree_dim8["quart3"].disabled is False
+        assert tree_dim8["quart3"].pair1_can_be_placed is True
+        assert tree_dim8["quart3"].pair2_can_be_placed is True
+
+    def test_unconstrained_passthrough_when_nb_pair_round_x_not_equal_active_count(
+        self, tree_dim8
+    ):
+        bracket = tree_dim8["bracket"]
+        bracket.nb_pair_round_8 = 4
+        bracket.nb_pair_round_4 = 1
+        bracket.save(update_fields=["nb_pair_round_8", "nb_pair_round_4"])
+
+        bracket.recompute_placement_flags()
+
+        tree_dim8["demie1"].refresh_from_db()
+        tree_dim8["demie2"].refresh_from_db()
+
+        assert tree_dim8["demie1"].pair1_can_be_placed is True
+        assert tree_dim8["demie1"].pair2_can_be_placed is True
+        assert tree_dim8["demie2"].pair1_can_be_placed is True
+        assert tree_dim8["demie2"].pair2_can_be_placed is True
+
+        for key in ("quart1", "quart2", "quart3", "quart4"):
+            tree_dim8[key].refresh_from_db()
+            assert tree_dim8[key].disabled is False
+
+    def test_single_entrant_round_locks_other_rounds_with_zero_entrants(
+        self, tree_dim8
+    ):
+        bracket = tree_dim8["bracket"]
+        bracket.nb_pair_round_8 = 4
+        bracket.save(update_fields=["nb_pair_round_8"])
+
+        bracket.recompute_placement_flags()
+
+        for key in ("quart1", "quart2", "quart3", "quart4"):
+            tree_dim8[key].refresh_from_db()
+            assert tree_dim8[key].disabled is False
+
+        # QUART_DE_FINALE is the premier tour (nb_pair_round_8=4, largest
+        # nonzero entrant size) and stays free. DEMIE_FINALE is NOT the
+        # premier tour and has nb_pair_round_4=0 (default): no pair is ever
+        # meant to enter it directly, so both slots must be locked on every
+        # active demie match.
+        tree_dim8["demie1"].refresh_from_db()
+        tree_dim8["demie2"].refresh_from_db()
+        assert tree_dim8["demie1"].pair1_can_be_placed is False
+        assert tree_dim8["demie1"].pair2_can_be_placed is False
+        assert tree_dim8["demie2"].pair1_can_be_placed is False
+        assert tree_dim8["demie2"].pair2_can_be_placed is False
+
+    @pytest.fixture
+    def tree_dim16(self, tournament):
+        bracket = BracketFactory(tournament=tournament, dimension=16)
+
+        huit = [
+            MatchFactory(
+                bracket=bracket, round=Round.HUITIEME_DE_FINALE, match_number=i + 1
+            )
+            for i in range(8)
+        ]
+        quart = [
+            MatchFactory(
+                bracket=bracket,
+                round=Round.QUART_DE_FINALE,
+                match_number=i + 1,
+                child1=huit[2 * i],
+                child2=huit[2 * i + 1],
+            )
+            for i in range(4)
+        ]
+        demie1 = MatchFactory(
+            bracket=bracket,
+            round=Round.DEMIE_FINALE,
+            match_number=1,
+            child1=quart[0],
+            child2=quart[1],
+        )
+        demie2 = MatchFactory(
+            bracket=bracket,
+            round=Round.DEMIE_FINALE,
+            match_number=2,
+            child1=quart[2],
+            child2=quart[3],
+        )
+        finale = MatchFactory(
+            bracket=bracket,
+            round=Round.FINALE,
+            match_number=1,
+            child1=demie1,
+            child2=demie2,
+        )
+        return {
+            "bracket": bracket,
+            "huit": huit,
+            "quart": quart,
+            "demie1": demie1,
+            "demie2": demie2,
+            "finale": finale,
+        }
+
+    def test_gap_round_with_zero_entrants_is_locked(self, tree_dim16):
+        bracket = tree_dim16["bracket"]
+        bracket.nb_pair_round_16 = 8
+        bracket.nb_pair_round_8 = 0
+        bracket.nb_pair_round_4 = 2
+        bracket.save(
+            update_fields=["nb_pair_round_16", "nb_pair_round_8", "nb_pair_round_4"]
+        )
+
+        bracket.recompute_placement_flags()
+
+        tree_dim16["demie1"].refresh_from_db()
+        tree_dim16["demie2"].refresh_from_db()
+        assert tree_dim16["demie1"].pair1_can_be_placed is True
+        assert tree_dim16["demie1"].pair2_can_be_placed is False
+        assert tree_dim16["demie2"].pair1_can_be_placed is False
+        assert tree_dim16["demie2"].pair2_can_be_placed is True
+
+        tree_dim16["quart"][0].refresh_from_db()
+        tree_dim16["huit"][0].refresh_from_db()
+        tree_dim16["huit"][1].refresh_from_db()
+        assert tree_dim16["quart"][0].disabled is True
+        assert tree_dim16["huit"][0].disabled is True
+        assert tree_dim16["huit"][1].disabled is True
+
+        tree_dim16["quart"][3].refresh_from_db()
+        tree_dim16["huit"][6].refresh_from_db()
+        tree_dim16["huit"][7].refresh_from_db()
+        assert tree_dim16["quart"][3].disabled is True
+        assert tree_dim16["huit"][6].disabled is True
+        assert tree_dim16["huit"][7].disabled is True
+
+        # quart[1] and quart[2] sit in the gap round (nb_pair_round_8=0):
+        # no entrant is ever meant to be placed directly into QUART_DE_FINALE
+        # here, but the matches are still real and must be played out from
+        # their huitieme winners below, so they stay active (disabled=False)
+        # while both placement slots are locked.
+        tree_dim16["quart"][1].refresh_from_db()
+        assert tree_dim16["quart"][1].disabled is False
+        assert tree_dim16["quart"][1].pair1_can_be_placed is False
+        assert tree_dim16["quart"][1].pair2_can_be_placed is False
+
+        tree_dim16["quart"][2].refresh_from_db()
+        assert tree_dim16["quart"][2].disabled is False
+        assert tree_dim16["quart"][2].pair1_can_be_placed is False
+        assert tree_dim16["quart"][2].pair2_can_be_placed is False

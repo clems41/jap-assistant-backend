@@ -49,6 +49,14 @@ ROUNDS_BY_DIMENSION: dict[int, list[str]] = {
     ],
 }
 
+ROUND_BY_SIZE: dict[int, str] = {
+    64: Round.TRENTE_DEUXIEME_DE_FINALE,
+    32: Round.SEIZIEME_DE_FINALE,
+    16: Round.HUITIEME_DE_FINALE,
+    8: Round.QUART_DE_FINALE,
+    4: Round.DEMIE_FINALE,
+}
+
 
 def _place_range_label(start_place: int, dimension: int, round_name: str) -> str:
     """Return the "Places X-Y" label for `round_name` within a classification
@@ -65,7 +73,14 @@ def _place_range_label(start_place: int, dimension: int, round_name: str) -> str
 
 
 class Bracket(TimeStampedModel):
-    DIMENSION_CHOICES = [(2, "2"), (4, "4"), (8, "8"), (16, "16"), (32, "32"), (64, "64")]
+    DIMENSION_CHOICES = [
+        (2, "2"),
+        (4, "4"),
+        (8, "8"),
+        (16, "16"),
+        (32, "32"),
+        (64, "64"),
+    ]
 
     tournament = models.ForeignKey(
         Tournament,
@@ -129,19 +144,22 @@ class Bracket(TimeStampedModel):
 
         Pass 2 (after pass 1): a slot can no longer be placed into if the
         match is disabled, or if the corresponding child subtree already has
-        a placement anywhere in it.
+        a placement anywhere in it — unless overridden by the structural
+        constraint (see `_compute_forced_sides`), which forces a single side
+        regardless of placements.
         """
         matches = list(self.matches.all())
         by_id = {m.pk: m for m in matches}
         root = next(m for m in matches if m.round == Round.FINALE)
 
         self._compute_disabled(root, by_id)
+        forced_side = self._compute_forced_sides(self, matches, by_id)
         for match in matches:
             match.pair1_can_be_placed = self._compute_can_be_placed(
-                match, by_id.get(match.child1_id), by_id
+                match, by_id.get(match.child1_id), by_id, forced_side, "pair1"
             )
             match.pair2_can_be_placed = self._compute_can_be_placed(
-                match, by_id.get(match.child2_id), by_id
+                match, by_id.get(match.child2_id), by_id, forced_side, "pair2"
             )
 
         Match.objects.bulk_update(
@@ -165,11 +183,107 @@ class Bracket(TimeStampedModel):
             Bracket._compute_disabled(child, by_id)
 
     @staticmethod
+    def _compute_forced_sides(
+        bracket: "Bracket", matches: list["Match"], by_id: dict[int, "Match"]
+    ) -> dict[int, str]:
+        """For every round other than the "premier tour" (the largest round
+        size with a nonzero nb_pair_round_X), force which slot(s) may accept a
+        placement, derived purely from nb_pair_round_X, independent of any
+        actual placement:
+
+        - nb_pair_round_X == 0: no pair is ever meant to enter this round
+          directly, so neither slot may accept a placement ("locked") on any
+          currently active match in it.
+        - nb_pair_round_X == N (N = current count of active matches in the
+          round): the round is fully saturated by direct entrants, so each
+          active match accepts a placement on exactly one side (pair1 for the
+          demi-finale #1 half, pair2 for the demi-finale #2 half), and the
+          opposite child's entire subtree is force-disabled.
+        - nb_pair_round_X not in {0, N}: current/unconstrained behavior.
+
+        Does nothing at all if no round has any nonzero nb_pair_round_X
+        (nothing to anchor a "premier tour" against).
+
+        Processed smallest round size to largest (excluding the premier tour)
+        since a round's force-disables must be finalized before computing the
+        active-match count of the next, larger round.
+        """
+        rounds = ROUNDS_BY_DIMENSION[bracket.dimension]
+        entrant_sizes = sorted(
+            size
+            for size in ROUND_BY_SIZE
+            if size <= bracket.dimension
+            and getattr(bracket, f"nb_pair_round_{size}") > 0
+        )
+        if not entrant_sizes:
+            return {}
+        premier_tour = entrant_sizes[-1]
+
+        matches_by_round: dict[str, list[Match]] = {}
+        for m in matches:
+            matches_by_round.setdefault(m.round, []).append(m)
+
+        forced_side: dict[int, str] = {}
+        for size in sorted(s for s in ROUND_BY_SIZE if s <= bracket.dimension):
+            if size == premier_tour:
+                continue
+
+            round_name = ROUND_BY_SIZE[size]
+            round_index = rounds.index(round_name)
+            num_matches = bracket.dimension // (2 ** (round_index + 1))
+            half = num_matches // 2
+
+            round_matches = sorted(
+                matches_by_round.get(round_name, []), key=lambda m: m.match_number
+            )
+            active = [m for m in round_matches if not m.disabled]
+            nb_pair = getattr(bracket, f"nb_pair_round_{size}")
+
+            if nb_pair == 0:
+                for m in active:
+                    forced_side[m.pk] = "locked"
+                continue
+
+            if nb_pair != len(active):
+                continue
+
+            for m in active:
+                if m.match_number <= half:
+                    forced_side[m.pk] = "pair1"
+                    Bracket._force_disable_subtree(by_id.get(m.child1_id), by_id)
+                else:
+                    forced_side[m.pk] = "pair2"
+                    Bracket._force_disable_subtree(by_id.get(m.child2_id), by_id)
+
+        return forced_side
+
+    @staticmethod
+    def _force_disable_subtree(node: "Match | None", by_id: dict[int, "Match"]) -> None:
+        """Unconditionally disable `node` and its entire descendant subtree.
+
+        Unlike `_compute_disabled` (which only disables a child when the
+        parent's slot was bypassed by a real placement), this is a pure
+        structural cascade: the subtree is disabled regardless of whether
+        any placement exists in it.
+        """
+        if node is None:
+            return
+        node.disabled = True
+        Bracket._force_disable_subtree(by_id.get(node.child1_id), by_id)
+        Bracket._force_disable_subtree(by_id.get(node.child2_id), by_id)
+
+    @staticmethod
     def _compute_can_be_placed(
-        match: "Match", child: "Match | None", by_id: dict[int, "Match"]
+        match: "Match",
+        child: "Match | None",
+        by_id: dict[int, "Match"],
+        forced_side: dict[int, str],
+        slot: str,
     ) -> bool:
         if match.disabled:
             return False
+        if match.pk in forced_side:
+            return forced_side[match.pk] == slot
         return not Bracket._has_placement(child, by_id)
 
     @staticmethod

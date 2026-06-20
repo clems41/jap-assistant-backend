@@ -1,14 +1,6 @@
 from apps.tournaments.models import Tournament
 
-from .models import ROUNDS_BY_DIMENSION, Bracket, Match, Round
-
-ROUND_BY_SIZE: dict[int, str] = {
-    64: Round.TRENTE_DEUXIEME_DE_FINALE,
-    32: Round.SEIZIEME_DE_FINALE,
-    16: Round.HUITIEME_DE_FINALE,
-    8: Round.QUART_DE_FINALE,
-    4: Round.DEMIE_FINALE,
-}
+from .models import ROUND_BY_SIZE, ROUNDS_BY_DIMENSION, Bracket, Match
 
 
 def generate_match_tree(bracket: Bracket, game_format: str) -> Match:
@@ -102,9 +94,7 @@ def generate_classification_brackets(
 
     for index, round_name in enumerate(rounds):
         round_size = dimension // (2**index)
-        new_entrants = getattr(
-            main_bracket, f"nb_pair_round_{round_size}", 0
-        )
+        new_entrants = getattr(main_bracket, f"nb_pair_round_{round_size}", 0)
         entering = carried_winners + new_entrants
         real_matches = entering // 2
 

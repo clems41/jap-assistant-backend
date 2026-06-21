@@ -325,6 +325,7 @@ class Match(TimeStampedModel):
     )
     round = models.CharField(max_length=30, choices=Round.choices)
     match_number = models.PositiveSmallIntegerField()
+    order = models.PositiveIntegerField(default=0)
     game_format = models.CharField(
         max_length=2,
         choices=Tournament.GameFormat.choices,

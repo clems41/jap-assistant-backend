@@ -117,6 +117,45 @@ def generate_classification_brackets(
     return created
 
 
+def _assign_order(bracket: Bracket, start: int, matches_to_update: list[Match]) -> int:
+    """Recursively flatten `bracket` and its classification children into a
+    single default order, biggest round to smallest, ending in FINALE, with
+    each classification bracket's matches inserted immediately after the
+    round they derive from. Returns the next free order value after this
+    subtree, so callers can chain across siblings/recursion.
+    """
+    order = start
+    rounds = ROUNDS_BY_DIMENSION[bracket.dimension]
+    matches_by_round: dict[str, list[Match]] = {}
+    for m in bracket.matches.all():
+        matches_by_round.setdefault(m.round, []).append(m)
+    children_by_source_round = {c.source_round: c for c in bracket.children.all()}
+
+    for round_name in rounds:
+        round_matches = sorted(
+            matches_by_round.get(round_name, []), key=lambda m: m.match_number
+        )
+        for m in round_matches:
+            m.order = order
+            order += 1
+        matches_to_update.extend(round_matches)
+
+        child = children_by_source_round.get(round_name)
+        if child is not None:
+            order = _assign_order(child, order, matches_to_update)
+
+    return order
+
+
+def assign_match_order(main_bracket: Bracket) -> None:
+    """Assign the default match order for `main_bracket` and all of its
+    classification brackets (recursively), then persist it in one query.
+    """
+    matches_to_update: list[Match] = []
+    _assign_order(main_bracket, 1, matches_to_update)
+    Match.objects.bulk_update(matches_to_update, ["order"])
+
+
 def _cascade_classification(bracket: Bracket, tournament: Tournament) -> None:
     """Recursively cascade a classification bracket into its own children
     (Step B). Processes from the round closest to this bracket's own final

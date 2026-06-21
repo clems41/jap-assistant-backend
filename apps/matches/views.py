@@ -19,10 +19,12 @@ from .serializers import (
     BracketGenerateSerializer,
     BracketPlacementSerializer,
     BracketSerializer,
+    MatchOrderSerializer,
     MatchScoreSerializer,
     MatchSerializer,
 )
 from .services import (
+    assign_match_order,
     generate_classification_brackets,
     generate_match_tree,
     place_top_seeds,
@@ -54,9 +56,7 @@ class BracketView(TournamentScopedMixin, APIView):
     )
     def get(self, request: Request, tournament_id: int) -> Response:
         tournament = self._tournament
-        bracket = get_object_or_404(
-            Bracket, tournament=tournament, parent__isnull=True
-        )
+        bracket = get_object_or_404(Bracket, tournament=tournament, parent__isnull=True)
         return Response(BracketSerializer(bracket).data)
 
     @extend_schema(
@@ -83,9 +83,7 @@ class BracketView(TournamentScopedMixin, APIView):
     def post(self, request: Request, tournament_id: int) -> Response:
         tournament = self._tournament
 
-        if Bracket.objects.filter(
-            tournament=tournament, parent__isnull=True
-        ).exists():
+        if Bracket.objects.filter(tournament=tournament, parent__isnull=True).exists():
             raise ConflictError("Un tableau principal existe déjà pour ce tournoi.")
 
         serializer = BracketGenerateSerializer(
@@ -109,6 +107,7 @@ class BracketView(TournamentScopedMixin, APIView):
             place_top_seeds(bracket, tournament)
             bracket.recompute_placement_flags()
             generate_classification_brackets(bracket, tournament)
+            assign_match_order(bracket)
 
         return Response(BracketSerializer(bracket).data, status=status.HTTP_201_CREATED)
 
@@ -133,9 +132,7 @@ class BracketView(TournamentScopedMixin, APIView):
                 "Le tableau ne peut pas être supprimé : le tournoi est terminé."
             )
 
-        bracket = get_object_or_404(
-            Bracket, tournament=tournament, parent__isnull=True
-        )
+        bracket = get_object_or_404(Bracket, tournament=tournament, parent__isnull=True)
         was_started = tournament.status == Tournament.Status.STARTED
         bracket.delete()
         if was_started:
@@ -171,9 +168,7 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
                 "Le placement ne peut plus être modifié : le tournoi est terminé."
             )
 
-        bracket = get_object_or_404(
-            Bracket, tournament=tournament, parent__isnull=True
-        )
+        bracket = get_object_or_404(Bracket, tournament=tournament, parent__isnull=True)
 
         serializer = BracketPlacementSerializer(
             data=request.data,
@@ -192,6 +187,56 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
             bracket.recompute_placement_flags()
 
         return Response(BracketSerializer(bracket).data)
+
+
+class MatchOrderView(TournamentScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=MatchOrderSerializer,
+        responses={200: MatchSerializer(many=True)},
+        parameters=[
+            OpenApiParameter(
+                name="tournament_id", location=OpenApiParameter.PATH, type=int
+            ),
+        ],
+        summary="Réordonner les matchs à venir",
+        description=(
+            "Persiste un nouvel ordre de passage pour les matchs UPCOMING du "
+            "tournoi. La liste match_ids doit contenir exactement l'ensemble "
+            "actuel des matchs UPCOMING du tournoi, chacun une seule fois : "
+            "elle est rejetée en cas de doublon, d'ID inconnu ou appartenant "
+            "à un autre tournoi, d'ID non-UPCOMING, ou d'ID manquant. "
+            "Retourne le détail des matchs mis à jour, dans l'ordre de la "
+            "requête."
+        ),
+    )
+    def patch(self, request: Request, tournament_id: int) -> Response:
+        tournament = self._tournament
+
+        if tournament.is_finished:
+            raise ConflictError(
+                "L'ordre des matchs ne peut plus être modifié : le tournoi est terminé."
+            )
+
+        serializer = MatchOrderSerializer(
+            data=request.data, context={"tournament": tournament}
+        )
+        serializer.is_valid(raise_exception=True)
+
+        match_ids: list[int] = serializer.validated_data["match_ids"]
+        matches_map: dict[int, Match] = serializer.validated_data["_matches"]
+
+        updated: list[Match] = []
+        for index, match_id in enumerate(match_ids):
+            match = matches_map[match_id]
+            match.order = index + 1
+            updated.append(match)
+
+        with transaction.atomic():
+            Match.objects.bulk_update(updated, ["order"])
+
+        return Response(MatchSerializer(updated, many=True).data)
 
 
 def _find_parent_slot(match: Match) -> tuple[Match, str] | None:
@@ -234,9 +279,7 @@ def _find_classification_slot(match: Match) -> tuple[Match, str] | None:
     this round (e.g. the FINALE never has one).
     """
     bracket = match.bracket
-    classification_bracket = bracket.children.filter(
-        source_round=match.round
-    ).first()
+    classification_bracket = bracket.children.filter(source_round=match.round).first()
     if classification_bracket is None:
         return None
 

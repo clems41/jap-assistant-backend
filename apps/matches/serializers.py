@@ -19,6 +19,7 @@ class MatchSerializer(serializers.ModelSerializer):
             "round",
             "round_display",
             "match_number",
+            "order",
             "pair1",
             "pair2",
             "winner_id",
@@ -38,6 +39,7 @@ class MatchSerializer(serializers.ModelSerializer):
             "round",
             "round_display",
             "match_number",
+            "order",
             "pair1",
             "pair2",
             "game_format",
@@ -277,6 +279,69 @@ class BracketPlacementSerializer(serializers.Serializer):
         if overlap:
             raise serializers.ValidationError(
                 ["Une paire ne peut être placée qu'une seule fois dans le tableau."]
+            )
+
+        attrs["_matches"] = matches_map
+        return attrs
+
+
+class MatchOrderSerializer(serializers.Serializer):
+    match_ids = serializers.ListField(child=serializers.IntegerField())
+
+    def validate(self, attrs: dict) -> dict:
+        tournament = self.context["tournament"]
+        match_ids: list[int] = attrs["match_ids"]
+
+        if len(match_ids) != len(set(match_ids)):
+            raise serializers.ValidationError(
+                ["La liste des matchs contient des doublons."]
+            )
+
+        matches_map = {
+            m.pk: m
+            for m in Match.objects.filter(
+                bracket__tournament=tournament, pk__in=match_ids
+            )
+        }
+
+        unknown_ids = [mid for mid in match_ids if mid not in matches_map]
+        if unknown_ids:
+            raise serializers.ValidationError(
+                {
+                    "match_ids": [
+                        f"Les matchs suivants n'appartiennent pas à ce tournoi : "
+                        f"{unknown_ids}."
+                    ]
+                }
+            )
+
+        non_upcoming_ids = [
+            mid for mid in match_ids if matches_map[mid].status != Match.Status.UPCOMING
+        ]
+        if non_upcoming_ids:
+            raise serializers.ValidationError(
+                {
+                    "match_ids": [
+                        f"Les matchs suivants ne sont pas à venir (UPCOMING) : "
+                        f"{non_upcoming_ids}."
+                    ]
+                }
+            )
+
+        current_upcoming_ids = set(
+            Match.objects.filter(
+                bracket__tournament=tournament, status=Match.Status.UPCOMING
+            ).values_list("pk", flat=True)
+        )
+        missing_ids = current_upcoming_ids - set(match_ids)
+        if missing_ids:
+            raise serializers.ValidationError(
+                {
+                    "match_ids": [
+                        f"Les matchs à venir suivants sont manquants de la liste : "
+                        f"{sorted(missing_ids)}."
+                    ]
+                }
             )
 
         attrs["_matches"] = matches_map

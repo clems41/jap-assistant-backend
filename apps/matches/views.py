@@ -14,7 +14,7 @@ from apps.common.exceptions import ConflictError
 from apps.players.models import Pair
 from apps.tournaments.models import Tournament
 
-from .models import Bracket, Match, Round
+from .models import ROUNDS_BY_DIMENSION, Bracket, Match, Round
 from .serializers import (
     BracketGenerateSerializer,
     BracketPlacementSerializer,
@@ -211,19 +211,73 @@ def _find_parent_slot(match: Match) -> tuple[Match, str] | None:
     return None
 
 
-def _propagate_winner(match: Match, winner: Pair) -> None:
-    parent_slot = _find_parent_slot(match)
-    if parent_slot is None:
+def _fill_slot(slot: tuple[Match, str] | None, pair: Pair | None) -> None:
+    """Set `slot`'s target match field to `pair` (or None to clear it).
+    Shared by winner/loser propagation and by their un-propagation in
+    `MatchScoreView.delete()`.
+    """
+    if slot is None:
         return
+    target, field_name = slot
+    setattr(target, field_name, pair)
+    target.save(update_fields=[field_name, "updated_at"])
 
-    parent, slot = parent_slot
-    setattr(parent, slot, winner)
-    parent.save(update_fields=[slot, "updated_at"])
+
+def _propagate_winner(match: Match, winner: Pair) -> None:
+    _fill_slot(_find_parent_slot(match), winner)
+
+
+def _find_classification_slot(match: Match) -> tuple[Match, str] | None:
+    """Return (target_match, slot_name) — the slot in the classification
+    bracket fed by the losers of `match`'s round within `match`'s own
+    bracket — or None if that bracket has no classification bracket for
+    this round (e.g. the FINALE never has one).
+    """
+    bracket = match.bracket
+    classification_bracket = bracket.children.filter(
+        source_round=match.round
+    ).first()
+    if classification_bracket is None:
+        return None
+
+    position = Match.objects.filter(
+        bracket=bracket,
+        round=match.round,
+        disabled=False,
+        match_number__lt=match.match_number,
+    ).count()
+
+    target_round = ROUNDS_BY_DIMENSION[classification_bracket.dimension][0]
+    target_match_number = position // 2 + 1
+    slot = "pair1" if position % 2 == 0 else "pair2"
+
+    target_match = Match.objects.get(
+        bracket=classification_bracket,
+        round=target_round,
+        match_number=target_match_number,
+    )
+    return target_match, slot
+
+
+def _propagate_loser(match: Match, loser: Pair) -> None:
+    _fill_slot(_find_classification_slot(match), loser)
+
+
+def _guard_slot_has_no_winner(slot: tuple[Match, str] | None, message: str) -> None:
+    """Raise ConflictError if `slot`'s target match already has a winner.
+    Shared guard for both the parent slot and the classification slot
+    checked by `MatchScoreView.delete()` before any mutation happens.
+    """
+    if slot is None:
+        return
+    target, _ = slot
+    if target.winner_id is not None:
+        raise ConflictError(message)
 
 
 def _advance_tournament_status(match: Match, tournament: Tournament) -> None:
     tournament.mark_as_started()
-    if match.round == Round.FINALE:
+    if match.round == Round.FINALE and match.bracket.parent_id is None:
         tournament.mark_as_finished()
 
 
@@ -315,7 +369,10 @@ class MatchScoreView(TournamentScopedMixin, APIView):
             update_fields=["score", "winner", "status", "finished_at", "updated_at"]
         )
 
+        loser = match.pair2 if winner_id == match.pair1_id else match.pair1
+
         _propagate_winner(match, winner)
+        _propagate_loser(match, loser)
         _advance_tournament_status(match, tournament)
 
         return Response(MatchSerializer(match).data)
@@ -344,13 +401,18 @@ class MatchScoreView(TournamentScopedMixin, APIView):
         match = get_object_or_404(Match, pk=match_id, bracket__tournament=tournament)
 
         parent_slot = _find_parent_slot(match)
-        if parent_slot is not None:
-            parent, slot = parent_slot
-            if parent.winner_id is not None:
-                raise ConflictError(
-                    "Le score de ce match ne peut pas être supprimé : "
-                    "le match suivant a déjà un vainqueur."
-                )
+        _guard_slot_has_no_winner(
+            parent_slot,
+            "Le score de ce match ne peut pas être supprimé : "
+            "le match suivant a déjà un vainqueur.",
+        )
+
+        classification_slot = _find_classification_slot(match)
+        _guard_slot_has_no_winner(
+            classification_slot,
+            "Le score de ce match ne peut pas être supprimé : le "
+            "match de classement correspondant a déjà un vainqueur.",
+        )
 
         match.score = ""
         match.winner = None
@@ -360,12 +422,10 @@ class MatchScoreView(TournamentScopedMixin, APIView):
             update_fields=["score", "winner", "status", "finished_at", "updated_at"]
         )
 
-        if parent_slot is not None:
-            parent, slot = parent_slot
-            setattr(parent, slot, None)
-            parent.save(update_fields=[slot, "updated_at"])
+        _fill_slot(parent_slot, None)
+        _fill_slot(classification_slot, None)
 
-        if match.round == Round.FINALE:
+        if match.round == Round.FINALE and match.bracket.parent_id is None:
             tournament.revert_to_started()
 
         return Response(status=status.HTTP_204_NO_CONTENT)

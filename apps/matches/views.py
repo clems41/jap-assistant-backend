@@ -27,6 +27,7 @@ from .serializers import (
 )
 from .services import (
     assign_match_order,
+    compute_estimated_start_times,
     generate_classification_brackets,
     generate_match_tree,
     place_top_seeds,
@@ -226,6 +227,16 @@ class MatchListView(TournamentScopedMixin, generics.ListAPIView):
 
         return qs
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Always simulate over the full UPCOMING/STARTED/FINISHED set of the
+        # tournament, regardless of the `?status=` filter applied to the
+        # response, so the estimation stays consistent across requests.
+        context["estimated_start_at_map"] = compute_estimated_start_times(
+            self._tournament
+        )
+        return context
+
 
 class MatchOrderView(TournamentScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
@@ -403,7 +414,8 @@ class MatchStartView(TournamentScopedMixin, APIView):
             )
 
         match.status = Match.Status.STARTED
-        match.save(update_fields=["status", "updated_at"])
+        match.started_at = timezone.now()
+        match.save(update_fields=["status", "started_at", "updated_at"])
 
         return Response(MatchSerializer(match).data)
 
@@ -498,9 +510,17 @@ class MatchScoreView(TournamentScopedMixin, APIView):
         match.score = ""
         match.winner = None
         match.status = Match.Status.UPCOMING
+        match.started_at = None
         match.finished_at = None
         match.save(
-            update_fields=["score", "winner", "status", "finished_at", "updated_at"]
+            update_fields=[
+                "score",
+                "winner",
+                "status",
+                "started_at",
+                "finished_at",
+                "updated_at",
+            ]
         )
 
         _fill_slot(parent_slot, None)

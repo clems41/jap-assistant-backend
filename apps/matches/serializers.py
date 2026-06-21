@@ -32,6 +32,7 @@ class MatchSerializer(serializers.ModelSerializer):
             "pair2_can_be_placed",
             "status",
             "status_display",
+            "started_at",
             "finished_at",
         ]
         read_only_fields = [
@@ -50,6 +51,7 @@ class MatchSerializer(serializers.ModelSerializer):
             "pair2_can_be_placed",
             "status",
             "status_display",
+            "started_at",
             "finished_at",
         ]
 
@@ -78,6 +80,7 @@ MatchSerializer.get_child2 = extend_schema_field(MatchSerializer)(
 class MatchListSerializer(serializers.ModelSerializer):
     round_display = serializers.CharField(source="get_display_round", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    estimated_start_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
@@ -94,9 +97,31 @@ class MatchListSerializer(serializers.ModelSerializer):
             "score",
             "status",
             "status_display",
+            "started_at",
+            "finished_at",
+            "estimated_start_at",
+        ]
+        read_only_fields = [
+            "id",
+            "round",
+            "round_display",
+            "match_number",
+            "order",
+            "pair1",
+            "pair2",
+            "winner_id",
+            "game_format",
+            "score",
+            "status",
+            "status_display",
+            "started_at",
             "finished_at",
         ]
-        read_only_fields = fields
+
+    def get_estimated_start_at(self, obj: Match) -> object:
+        if obj.status != Match.Status.UPCOMING:
+            return None
+        return self.context.get("estimated_start_at_map", {}).get(obj.id)
 
 
 class ClassificationBracketSerializer(serializers.ModelSerializer):

@@ -1,4 +1,5 @@
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.matches.models import Match
@@ -29,6 +30,23 @@ class TestMatchStart:
         assert data["status"] == "STARTED"
         match.refresh_from_db()
         assert match.status == Match.Status.STARTED
+
+    def test_200_sets_started_at(self, authenticated_client, tournament):
+        bracket = BracketFactory(tournament=tournament)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="FINALE")
+
+        before = timezone.now()
+        resp = authenticated_client.post(_start_url(tournament.pk, match.pk))
+        after = timezone.now()
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["started_at"] is not None
+        match.refresh_from_db()
+        assert match.started_at is not None
+        assert before <= match.started_at <= after
 
     def test_409_already_started(self, authenticated_client, tournament):
         bracket = BracketFactory(tournament=tournament)

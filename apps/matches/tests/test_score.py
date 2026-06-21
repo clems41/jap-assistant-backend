@@ -563,6 +563,7 @@ class TestMatchScoreDelete:
         assert finale.score == ""
         assert finale.winner is None
         assert finale.status == Match.Status.UPCOMING
+        assert finale.started_at is None
         assert finale.finished_at is None
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.STARTED

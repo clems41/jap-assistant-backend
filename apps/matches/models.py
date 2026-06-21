@@ -362,6 +362,7 @@ class Match(TimeStampedModel):
         choices=Status.choices,
         default=Status.UPCOMING,
     )
+    started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

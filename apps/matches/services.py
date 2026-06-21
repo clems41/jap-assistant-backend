@@ -1,6 +1,13 @@
+import heapq
+from datetime import datetime, timedelta
+
+from django.utils import timezone
+
 from apps.tournaments.models import Tournament
 
 from .models import ROUND_BY_SIZE, ROUNDS_BY_DIMENSION, Bracket, Match
+
+COURT_CHANGEOVER = timedelta(minutes=5)
 
 
 def generate_match_tree(bracket: Bracket, game_format: str) -> Match:
@@ -181,3 +188,132 @@ def _cascade_classification(bracket: Bracket, tournament: Tournament) -> None:
         )
         generate_match_tree(child, tournament.game_format)
         _cascade_classification(child, tournament)
+
+
+def compute_estimated_start_times(tournament: Tournament) -> dict[int, datetime]:
+    """Return {match_id: estimated_start_at} for every UPCOMING match of
+    `tournament` that can be estimated. Matches that can't be estimated
+    (missing estimated_match_duration, no TimeSlot, or no remaining
+    scheduled court capacity) are simply absent from the returned dict.
+
+    Simulates a "queue of courts" (a capacity counter, not physically
+    identified courts) being freed up over the day as STARTED/FINISHED
+    matches end, then assigns each UPCOMING match (in `order`) to the
+    earliest available slot in that queue.
+    """
+    duration = tournament.estimated_match_duration
+    if duration is None:
+        return {}
+    duration_delta = timedelta(minutes=duration)
+
+    time_slot_periods = sorted(
+        (
+            (
+                timezone.make_aware(
+                    datetime.combine(tournament.start_date, ts.start_time)
+                ),
+                timezone.make_aware(
+                    datetime.combine(tournament.start_date, ts.end_time)
+                ),
+                ts.courts_available,
+            )
+            for ts in tournament.time_slots.all()
+        ),
+        key=lambda period: period[0],
+    )
+    if not time_slot_periods:
+        return {}
+
+    def capacity_at(t: datetime) -> int:
+        for start, end, courts in time_slot_periods:
+            if start <= t < end:
+                return courts
+        return 0
+
+    now = timezone.now()
+
+    effective_now = None
+    for start, _end, courts in time_slot_periods:
+        candidate = max(now, start)
+        if courts > 0 and capacity_at(candidate) > 0:
+            effective_now = candidate
+            break
+    if effective_now is None:
+        return {}
+
+    capacity_now = capacity_at(effective_now)
+
+    started_matches = list(
+        Match.objects.filter(
+            bracket__tournament=tournament,
+            disabled=False,
+            status=Match.Status.STARTED,
+        )
+    )
+
+    release_heap: list[datetime] = []
+    for m in started_matches:
+        release_at = (m.started_at or effective_now) + duration_delta + COURT_CHANGEOVER
+        heapq.heappush(release_heap, release_at)
+
+    free_count = max(capacity_now - len(started_matches), 0)
+    if free_count > 0:
+        # Exclude NULL finished_at (defensive: legacy/inconsistent data)
+        # explicitly — Postgres sorts NULLs first on DESC by default, which
+        # would otherwise wrongly treat them as "most recently finished".
+        recent_finished = list(
+            Match.objects.filter(
+                bracket__tournament=tournament,
+                disabled=False,
+                status=Match.Status.FINISHED,
+                finished_at__isnull=False,
+            ).order_by("-finished_at")[:free_count]
+        )
+        for m in recent_finished:
+            heapq.heappush(release_heap, m.finished_at + COURT_CHANGEOVER)
+        for _ in range(free_count - len(recent_finished)):
+            heapq.heappush(release_heap, effective_now)
+
+    future_slot_changes: list[tuple[datetime, int]] = []
+    previous_courts = capacity_now
+    for start, _end, courts in time_slot_periods:
+        if start > effective_now:
+            extra_courts = courts - previous_courts
+            if extra_courts > 0:
+                future_slot_changes.append((start, extra_courts))
+            previous_courts = courts
+    future_slot_changes.sort(key=lambda change: change[0])
+
+    upcoming_matches = Match.objects.filter(
+        bracket__tournament=tournament,
+        disabled=False,
+        status=Match.Status.UPCOMING,
+    ).order_by("order")
+
+    day_end = time_slot_periods[-1][1]
+
+    result: dict[int, datetime] = {}
+    change_index = 0
+    for match in upcoming_matches:
+        while (
+            release_heap
+            and change_index < len(future_slot_changes)
+            and future_slot_changes[change_index][0] <= release_heap[0]
+        ):
+            change_start, extra_courts = future_slot_changes[change_index]
+            for _ in range(extra_courts):
+                heapq.heappush(release_heap, change_start)
+            change_index += 1
+
+        if not release_heap:
+            break
+
+        release = heapq.heappop(release_heap)
+        start_at = max(release, now)
+        if start_at >= day_end:
+            break
+
+        result[match.id] = start_at
+        heapq.heappush(release_heap, start_at + duration_delta)
+
+    return result

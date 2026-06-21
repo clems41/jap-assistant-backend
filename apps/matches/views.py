@@ -3,8 +3,9 @@ import functools
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -19,6 +20,7 @@ from .serializers import (
     BracketGenerateSerializer,
     BracketPlacementSerializer,
     BracketSerializer,
+    MatchListSerializer,
     MatchOrderSerializer,
     MatchScoreSerializer,
     MatchSerializer,
@@ -187,6 +189,42 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
             bracket.recompute_placement_flags()
 
         return Response(BracketSerializer(bracket).data)
+
+
+_MATCH_LIST_FILTERS = [
+    OpenApiParameter(
+        name="status",
+        type=OpenApiTypes.STR,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        many=True,
+        description=(
+            "Filtrer par statut. Paramètre répétable pour filtrer sur "
+            "plusieurs statuts à la fois (ex: ?status=UPCOMING&status=STARTED)."
+        ),
+        enum=[c.value for c in Match.Status],
+    ),
+]
+
+
+@extend_schema(parameters=_MATCH_LIST_FILTERS)
+class MatchListView(TournamentScopedMixin, generics.ListAPIView):
+    serializer_class = MatchListSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    ordering_fields = ["order"]
+    ordering = ["order"]
+
+    def get_queryset(self):
+        qs = Match.objects.filter(
+            bracket__tournament=self._tournament, disabled=False
+        ).select_related("bracket")
+
+        statuses = self.request.query_params.getlist("status")
+        if statuses:
+            qs = qs.filter(status__in=statuses)
+
+        return qs
 
 
 class MatchOrderView(TournamentScopedMixin, APIView):

@@ -75,6 +75,30 @@ MatchSerializer.get_child2 = extend_schema_field(MatchSerializer)(
 )
 
 
+class MatchListSerializer(serializers.ModelSerializer):
+    round_display = serializers.CharField(source="get_display_round", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = Match
+        fields = [
+            "id",
+            "round",
+            "round_display",
+            "match_number",
+            "order",
+            "pair1",
+            "pair2",
+            "winner_id",
+            "game_format",
+            "score",
+            "status",
+            "status_display",
+            "finished_at",
+        ]
+        read_only_fields = fields
+
+
 class ClassificationBracketSerializer(serializers.ModelSerializer):
     source_round_display = serializers.CharField(
         source="get_display_source_round", read_only=True

@@ -38,7 +38,7 @@ class TournamentSerializer(serializers.ModelSerializer):
         ]
 
     def get_qr_code_url(self, obj: Tournament) -> str:
-        return f"{settings.FRONTEND_URL}/public/tournaments/{obj.public_code}/matches"
+        return f"{settings.FRONTEND_URL}/public/tournaments/{obj.public_code}"
 
 
 class PublicTournamentSerializer(serializers.ModelSerializer):

@@ -1324,7 +1324,7 @@ class TestQrCodeUrl:
         assert response.status_code == status.HTTP_200_OK
         expected = (
             f"{settings.FRONTEND_URL}/public/tournaments/"
-            f"{tournament.public_code}/matches"
+            f"{tournament.public_code}"
         )
         assert response.data["qr_code_url"] == expected
 
@@ -1365,6 +1365,6 @@ class TestQrCodeUrl:
         assert response.status_code == status.HTTP_200_OK
         expected = (
             f"{settings.FRONTEND_URL}/public/tournaments/"
-            f"{tournament.public_code}/matches"
+            f"{tournament.public_code}"
         )
         assert response.data["qr_code_url"] == expected

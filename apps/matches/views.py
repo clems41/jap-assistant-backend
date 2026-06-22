@@ -6,7 +6,7 @@ from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from apps.common.exceptions import ConflictError
 from apps.players.models import Pair
 from apps.tournaments.models import Tournament
+from apps.tournaments.views import PublicTournamentScopedMixin
 
 from .models import ROUNDS_BY_DIMENSION, Bracket, Match, Round
 from .serializers import (
@@ -24,6 +25,8 @@ from .serializers import (
     MatchOrderSerializer,
     MatchScoreSerializer,
     MatchSerializer,
+    PublicBracketSerializer,
+    PublicMatchListSerializer,
 )
 from .services import (
     assign_match_order,
@@ -530,3 +533,52 @@ class MatchScoreView(TournamentScopedMixin, APIView):
             tournament.revert_to_started()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(parameters=_MATCH_LIST_FILTERS)
+class PublicMatchListView(PublicTournamentScopedMixin, generics.ListAPIView):
+    """List a tournament's matches by its public_code. Read-only,
+    unauthenticated — intended for players without an account."""
+
+    serializer_class = PublicMatchListSerializer
+    permission_classes = [AllowAny]
+    pagination_class = None
+    ordering_fields = ["order"]
+    ordering = ["order"]
+
+    def get_queryset(self):
+        qs = Match.objects.filter(
+            bracket__tournament=self._tournament, disabled=False
+        ).select_related("bracket")
+
+        statuses = self.request.query_params.getlist("status")
+        if statuses:
+            qs = qs.filter(status__in=statuses)
+
+        return qs
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["estimated_start_at_map"] = compute_estimated_start_times(
+            self._tournament
+        )
+        return context
+
+
+class PublicBracketView(PublicTournamentScopedMixin, APIView):
+    """Retrieve the main bracket (and its classification brackets) by the
+    tournament's public_code. Read-only, unauthenticated."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        responses={200: PublicBracketSerializer},
+        parameters=[
+            OpenApiParameter(name="code", location=OpenApiParameter.PATH, type=str),
+        ],
+        summary="Récupérer le tableau principal (accès public)",
+    )
+    def get(self, request: Request, code: str) -> Response:
+        tournament = self._tournament
+        bracket = get_object_or_404(Bracket, tournament=tournament, parent__isnull=True)
+        return Response(PublicBracketSerializer(bracket).data)

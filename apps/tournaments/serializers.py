@@ -33,6 +33,29 @@ class TournamentSerializer(serializers.ModelSerializer):
         ]
 
 
+class PublicTournamentSerializer(serializers.ModelSerializer):
+    """Read-only, unauthenticated view of a tournament, exposed via its
+    public_code instead of the internal numeric id."""
+
+    class Meta:
+        model = Tournament
+        fields = [
+            "public_code",
+            "name",
+            "category",
+            "start_date",
+            "location",
+            "league",
+            "gender",
+            "game_format",
+            "configuration",
+            "estimated_match_duration",
+            "status",
+            "pairs_count",
+        ]
+        read_only_fields = fields
+
+
 class InformationsSerializer(serializers.Serializer):
     last_league = serializers.CharField(allow_null=True)
     last_location = serializers.CharField(allow_null=True)

@@ -2,6 +2,7 @@
 Base settings shared across all environments.
 Never use this file directly — use local.py, dev.py, or prod.py.
 """
+
 from datetime import timedelta
 from pathlib import Path
 
@@ -117,7 +118,9 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = True
 AUTH_USER_MODEL = "users.User"
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -251,5 +254,7 @@ SPECTACULAR_SETTINGS = {
     "SCHEMA_PATH_PREFIX": r"/api/v[0-9]+",
     "ENUM_NAME_OVERRIDES": {
         "RoundEnum": "apps.matches.models.Round",
+        "MatchStatusEnum": "apps.matches.models.Match.Status",
+        "TournamentStatusEnum": "apps.tournaments.models.Tournament.Status",
     },
 }

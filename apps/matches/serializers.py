@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -118,7 +120,7 @@ class MatchListSerializer(serializers.ModelSerializer):
             "finished_at",
         ]
 
-    def get_estimated_start_at(self, obj: Match) -> object:
+    def get_estimated_start_at(self, obj: Match) -> datetime | None:
         if obj.status != Match.Status.UPCOMING:
             return None
         return self.context.get("estimated_start_at_map", {}).get(obj.id)
@@ -190,6 +192,158 @@ class BracketSerializer(serializers.ModelSerializer):
     def get_classification_brackets(self, obj: Bracket) -> list[dict]:
         children = obj.children.all().order_by("-start_place")
         return ClassificationBracketSerializer(children, many=True).data
+
+
+class PublicMatchSerializer(serializers.ModelSerializer):
+    """Read-only, unauthenticated view of a match for the public bracket
+    endpoint. Same as MatchSerializer minus id/pair1_can_be_placed/
+    pair2_can_be_placed — disabled is kept."""
+
+    round_display = serializers.CharField(source="get_display_round", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    child1 = serializers.SerializerMethodField()
+    child2 = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Match
+        fields = [
+            "round",
+            "round_display",
+            "match_number",
+            "order",
+            "pair1",
+            "pair2",
+            "winner_id",
+            "game_format",
+            "score",
+            "child1",
+            "child2",
+            "disabled",
+            "status",
+            "status_display",
+            "started_at",
+            "finished_at",
+        ]
+        read_only_fields = fields
+
+    def get_child1(self, obj: Match) -> dict | None:
+        if obj.child1_id is None:
+            return None
+        return PublicMatchSerializer(obj.child1).data
+
+    def get_child2(self, obj: Match) -> dict | None:
+        if obj.child2_id is None:
+            return None
+        return PublicMatchSerializer(obj.child2).data
+
+
+# Applied after class definition to resolve the self-referential forward reference.
+PublicMatchSerializer.get_child1 = extend_schema_field(PublicMatchSerializer)(
+    PublicMatchSerializer.get_child1
+)
+PublicMatchSerializer.get_child2 = extend_schema_field(PublicMatchSerializer)(
+    PublicMatchSerializer.get_child2
+)
+
+
+class PublicMatchListSerializer(serializers.ModelSerializer):
+    """Read-only, unauthenticated view of a match for the public match list
+    endpoint. Same as MatchListSerializer minus id."""
+
+    round_display = serializers.CharField(source="get_display_round", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    estimated_start_at = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Match
+        fields = [
+            "round",
+            "round_display",
+            "match_number",
+            "order",
+            "pair1",
+            "pair2",
+            "winner_id",
+            "game_format",
+            "score",
+            "status",
+            "status_display",
+            "started_at",
+            "finished_at",
+            "estimated_start_at",
+        ]
+        read_only_fields = fields
+
+    def get_estimated_start_at(self, obj: Match) -> datetime | None:
+        if obj.status != Match.Status.UPCOMING:
+            return None
+        return self.context.get("estimated_start_at_map", {}).get(obj.id)
+
+
+class PublicClassificationBracketSerializer(serializers.ModelSerializer):
+    """Read-only, unauthenticated view of a classification bracket. Same as
+    ClassificationBracketSerializer minus id/dimension."""
+
+    source_round_display = serializers.CharField(
+        source="get_display_source_round", read_only=True
+    )
+    root_match = serializers.SerializerMethodField()
+    children = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Bracket
+        fields = [
+            "source_round",
+            "source_round_display",
+            "start_place",
+            "end_place",
+            "root_match",
+            "children",
+        ]
+
+    def get_root_match(self, obj: Bracket) -> dict:
+        root = obj.matches.get(round=Round.FINALE)
+        return PublicMatchSerializer(root).data
+
+    def get_children(self, obj: Bracket) -> list[dict]:
+        children = obj.children.all().order_by("-start_place")
+        return PublicClassificationBracketSerializer(children, many=True).data
+
+
+# Applied after class definition to resolve the self-referential forward
+# reference, same pattern as ClassificationBracketSerializer.
+PublicClassificationBracketSerializer.get_root_match = extend_schema_field(
+    PublicMatchSerializer
+)(PublicClassificationBracketSerializer.get_root_match)
+PublicClassificationBracketSerializer.get_children = extend_schema_field(
+    PublicClassificationBracketSerializer
+)(PublicClassificationBracketSerializer.get_children)
+
+
+class PublicBracketSerializer(serializers.ModelSerializer):
+    """Read-only, unauthenticated view of the main bracket. Same as
+    BracketSerializer keeping only root_match/classification_brackets —
+    id/dimension/nb_pair_round_* are dropped."""
+
+    root_match = serializers.SerializerMethodField()
+    classification_brackets = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Bracket
+        fields = [
+            "root_match",
+            "classification_brackets",
+        ]
+
+    @extend_schema_field(PublicMatchSerializer)
+    def get_root_match(self, obj: Bracket) -> dict:
+        root = obj.matches.get(round=Round.FINALE)
+        return PublicMatchSerializer(root).data
+
+    @extend_schema_field(PublicClassificationBracketSerializer)
+    def get_classification_brackets(self, obj: Bracket) -> list[dict]:
+        children = obj.children.all().order_by("-start_place")
+        return PublicClassificationBracketSerializer(children, many=True).data
 
 
 class MatchScoreSerializer(serializers.Serializer):

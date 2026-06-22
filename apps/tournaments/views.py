@@ -1,3 +1,4 @@
+import functools
 from typing import Any
 
 from django.db.models import TextChoices
@@ -16,6 +17,7 @@ from apps.tournaments.models import TimeSlot, Tournament
 from apps.tournaments.permissions import IsOwner
 from apps.tournaments.serializers import (
     InformationsSerializer,
+    PublicTournamentSerializer,
     TimeSlotSerializer,
     TournamentSerializer,
 )
@@ -259,3 +261,31 @@ class TimeSlotDetailView(generics.RetrieveUpdateDestroyAPIView):
             self.kwargs["tournament_id"], self.request.user
         )
         return TimeSlot.objects.filter(tournament=tournament)
+
+
+class PublicTournamentScopedMixin:
+    """Resolve the tournament from the public `code` URL kwarg.
+
+    Shared by every public (unauthenticated) view scoped to a tournament —
+    used both here and by apps.matches's public views.
+    """
+
+    request: Request
+    kwargs: dict
+
+    @functools.cached_property
+    def _tournament(self) -> Tournament:
+        return get_object_or_404(Tournament, public_code__iexact=self.kwargs["code"])
+
+
+class PublicTournamentDetailView(generics.RetrieveAPIView):
+    """Retrieve a tournament's public information by its public_code.
+
+    Read-only, unauthenticated — intended for players without an account.
+    """
+
+    queryset = Tournament.objects.all()
+    serializer_class = PublicTournamentSerializer
+    permission_classes = [AllowAny]
+    lookup_field = "public_code__iexact"
+    lookup_url_kwarg = "code"

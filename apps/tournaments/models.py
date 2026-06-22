@@ -3,6 +3,7 @@ from django.db import models
 from django.db.models import Q
 
 from apps.common.models import TimeStampedModel
+from apps.common.utils import generate_public_code
 
 
 class Tournament(TimeStampedModel):
@@ -97,6 +98,7 @@ class Tournament(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="tournaments",
     )
+    public_code = models.CharField(max_length=8, unique=True, editable=False)
     name = models.CharField(max_length=255)
     category = models.CharField(max_length=10, choices=Category.choices)
     start_date = models.DateField()
@@ -124,6 +126,11 @@ class Tournament(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args, **kwargs) -> None:
+        if not self.public_code:
+            self.public_code = generate_public_code()
+        super().save(*args, **kwargs)
 
     def recompute_status(self) -> None:
         """Recompute and persist the tournament status based on current state.

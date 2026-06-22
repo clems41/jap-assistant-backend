@@ -2,6 +2,7 @@ from datetime import time
 
 import pytest
 
+from apps.common.utils import PUBLIC_CODE_ALPHABET
 from apps.tournaments.models import TimeSlot, Tournament
 from apps.tournaments.serializers import TimeSlotSerializer
 from apps.tournaments.tests.factories import TimeSlotFactory, TournamentFactory
@@ -59,6 +60,36 @@ class TestTournamentModel:
         assert "Femme" in valid_genders
         assert "Mixte" in valid_genders
         assert len(valid_genders) == 3
+
+
+@pytest.mark.django_db
+class TestTournamentPublicCode:
+    def test_public_code_is_generated_on_creation(self) -> None:
+        tournament = TournamentFactory()
+        assert tournament.public_code
+        assert len(tournament.public_code) == 8
+
+    def test_public_code_only_uses_safe_alphabet(self) -> None:
+        tournament = TournamentFactory()
+        assert all(char in PUBLIC_CODE_ALPHABET for char in tournament.public_code)
+
+    def test_public_code_excludes_ambiguous_characters(self) -> None:
+        tournament = TournamentFactory()
+        for ambiguous in "0O1IL":
+            assert ambiguous not in tournament.public_code
+
+    def test_public_code_is_unique_across_tournaments(self) -> None:
+        tournaments = TournamentFactory.create_batch(20)
+        codes = [t.public_code for t in tournaments]
+        assert len(codes) == len(set(codes))
+
+    def test_saving_existing_tournament_does_not_regenerate_code(self) -> None:
+        tournament = TournamentFactory()
+        original_code = tournament.public_code
+        tournament.name = "Renamed Tournament"
+        tournament.save()
+        tournament.refresh_from_db()
+        assert tournament.public_code == original_code
 
 
 @pytest.mark.django_db

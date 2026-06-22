@@ -552,9 +552,22 @@ class MatchOrderSerializer(serializers.Serializer):
                 }
             )
 
+        disabled_ids = [mid for mid in match_ids if matches_map[mid].disabled]
+        if disabled_ids:
+            raise serializers.ValidationError(
+                {
+                    "match_ids": [
+                        f"Les matchs suivants sont désactivés et ne peuvent pas "
+                        f"être réordonnés : {disabled_ids}."
+                    ]
+                }
+            )
+
         current_upcoming_ids = set(
             Match.objects.filter(
-                bracket__tournament=tournament, status=Match.Status.UPCOMING
+                bracket__tournament=tournament,
+                status=Match.Status.UPCOMING,
+                disabled=False,
             ).values_list("pk", flat=True)
         )
         missing_ids = current_upcoming_ids - set(match_ids)

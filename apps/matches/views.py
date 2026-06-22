@@ -256,11 +256,14 @@ class MatchOrderView(TournamentScopedMixin, APIView):
         description=(
             "Persiste un nouvel ordre de passage pour les matchs UPCOMING du "
             "tournoi. La liste match_ids doit contenir exactement l'ensemble "
-            "actuel des matchs UPCOMING du tournoi, chacun une seule fois : "
-            "elle est rejetée en cas de doublon, d'ID inconnu ou appartenant "
-            "à un autre tournoi, d'ID non-UPCOMING, ou d'ID manquant. "
-            "Retourne le détail des matchs mis à jour, dans l'ordre de la "
-            "requête."
+            "actuel des matchs UPCOMING et non désactivés du tournoi, chacun "
+            "une seule fois : elle est rejetée en cas de doublon, d'ID "
+            "inconnu ou appartenant à un autre tournoi, d'ID non-UPCOMING, "
+            "d'ID désactivé, ou d'ID manquant. Les matchs désactivés "
+            "(disabled=True, ex. byes/walkovers en cascade) sont exclus de "
+            "l'ensemble réordonnable : ils ne sont ni requis ni acceptés "
+            "dans la liste. Retourne le détail des matchs mis à jour, dans "
+            "l'ordre de la requête."
         ),
     )
     def patch(self, request: Request, tournament_id: int) -> Response:

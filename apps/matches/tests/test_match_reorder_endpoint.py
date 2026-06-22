@@ -110,6 +110,29 @@ class TestMatchReorderHappyPath:
         finished_match.refresh_from_db()
         assert finished_match.order == 123
 
+    def test_disabled_matches_are_not_touched_or_required(
+        self, authenticated_client, tournament, upcoming_matches
+    ):
+        """A match that is UPCOMING but disabled (e.g. a bye/walkover
+        cascade) is excluded from the front-end's flat match list, so it
+        must neither be required in the payload nor have its order changed
+        by this endpoint."""
+        disabled_match = upcoming_matches[0]
+        disabled_match.disabled = True
+        disabled_match.order = 123
+        disabled_match.save()
+
+        remaining_upcoming = list(upcoming_matches[1:])
+        match_ids = [m.pk for m in reversed(remaining_upcoming)]
+
+        resp = authenticated_client.patch(
+            _order_url(tournament.pk), {"match_ids": match_ids}, format="json"
+        )
+
+        assert resp.status_code == 200
+        disabled_match.refresh_from_db()
+        assert disabled_match.order == 123
+
 
 @pytest.mark.django_db
 class TestMatchReorderValidation:
@@ -173,6 +196,21 @@ class TestMatchReorderValidation:
         self, authenticated_client, tournament, upcoming_matches
     ):
         match_ids = [m.pk for m in upcoming_matches[:-1]]  # one missing
+
+        resp = authenticated_client.patch(
+            _order_url(tournament.pk), {"match_ids": match_ids}, format="json"
+        )
+
+        assert resp.status_code == 400
+
+    def test_400_disabled_match_id_included(
+        self, authenticated_client, tournament, upcoming_matches
+    ):
+        disabled_match = upcoming_matches[0]
+        disabled_match.disabled = True
+        disabled_match.save()
+
+        match_ids = [m.pk for m in upcoming_matches]  # includes the disabled one
 
         resp = authenticated_client.patch(
             _order_url(tournament.pk), {"match_ids": match_ids}, format="json"

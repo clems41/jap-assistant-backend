@@ -2,6 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.matches.models import Bracket, Match
+from apps.players.tests.factories import PairFactory
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
 
@@ -12,7 +13,7 @@ EXPECTED_FIELDS = {
     "order",
     "pair1",
     "pair2",
-    "winner_id",
+    "winner",
     "game_format",
     "score",
     "status",
@@ -21,6 +22,15 @@ EXPECTED_FIELDS = {
     "finished_at",
     "estimated_start_at",
 }
+
+EXPECTED_PLAYER_FIELDS = {"first_name", "last_name", "ranking", "club"}
+EXCLUDED_PLAYER_FIELDS = {"id", "license_number", "phone", "email", "birth_date"}
+EXPECTED_PAIR_FIELDS = {"player1", "player2", "weight"}
+EXCLUDED_PAIR_FIELDS = {"id", "created_at", "updated_at"}
+
+
+def _score_url(tournament_id: int, match_id: int) -> str:
+    return f"/api/v1/tournaments/{tournament_id}/matches/{match_id}/score/"
 
 
 def _public_list_url(code: str) -> str:
@@ -213,3 +223,126 @@ class TestPublicMatchListEstimatedStartAt:
         for m in resp.json():
             if m["status"] in ("STARTED", "FINISHED"):
                 assert m["estimated_start_at"] is None
+
+
+@pytest.mark.django_db
+class TestPublicMatchListNestedPairs:
+    def test_pair1_and_pair2_are_null_when_not_yet_placed(
+        self, api_client, tournament, bracket
+    ):
+        # `bracket` fixture is generated with zero seeding and no
+        # registered pairs, so no match has pair1/pair2 placed yet.
+        resp = api_client.get(_public_list_url(tournament.public_code))
+
+        assert resp.status_code == 200
+        payloads = resp.json()
+        assert payloads
+        for match in payloads:
+            assert match["pair1"] is None
+            assert match["pair2"] is None
+
+    def test_winner_is_null_before_a_score_is_entered(
+        self, api_client, tournament, bracket
+    ):
+        match = Match.objects.filter(bracket=bracket).first()
+
+        resp = api_client.get(_public_list_url(tournament.public_code))
+
+        assert resp.status_code == 200
+        payload = next(
+            m
+            for m in resp.json()
+            if m["round"] == match.round and m["match_number"] == match.match_number
+        )
+        assert payload["winner"] is None
+
+    def test_pair_payload_has_exact_field_set(
+        self, api_client, authenticated_client, tournament, bracket
+    ):
+        match = Match.objects.filter(bracket=bracket).first()
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match.pair1 = pair1
+        match.pair2 = pair2
+        match.save(update_fields=["pair1", "pair2", "updated_at"])
+
+        authenticated_client.patch(
+            _score_url(tournament.pk, match.pk),
+            {"score": "6/4 6/4", "winner_id": pair1.pk},
+            format="json",
+        )
+
+        resp = api_client.get(_public_list_url(tournament.public_code))
+
+        assert resp.status_code == 200
+        payload = next(
+            m
+            for m in resp.json()
+            if m["round"] == match.round and m["match_number"] == match.match_number
+        )
+
+        for pair_payload in (payload["pair1"], payload["pair2"], payload["winner"]):
+            assert set(pair_payload.keys()) == EXPECTED_PAIR_FIELDS
+            assert EXCLUDED_PAIR_FIELDS.isdisjoint(pair_payload.keys())
+
+    def test_player_payload_has_exact_field_set_and_excludes_pii(
+        self, api_client, authenticated_client, tournament, bracket
+    ):
+        match = Match.objects.filter(bracket=bracket).first()
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match.pair1 = pair1
+        match.pair2 = pair2
+        match.save(update_fields=["pair1", "pair2", "updated_at"])
+
+        authenticated_client.patch(
+            _score_url(tournament.pk, match.pk),
+            {"score": "6/4 6/4", "winner_id": pair1.pk},
+            format="json",
+        )
+
+        resp = api_client.get(_public_list_url(tournament.public_code))
+
+        assert resp.status_code == 200
+        payload = next(
+            m
+            for m in resp.json()
+            if m["round"] == match.round and m["match_number"] == match.match_number
+        )
+
+        for pair_payload in (payload["pair1"], payload["pair2"], payload["winner"]):
+            for player_payload in (pair_payload["player1"], pair_payload["player2"]):
+                assert set(player_payload.keys()) == EXPECTED_PLAYER_FIELDS
+                for excluded_field in EXCLUDED_PLAYER_FIELDS:
+                    assert excluded_field not in player_payload
+
+    def test_winner_is_fully_nested_pair_once_score_entered(
+        self, api_client, authenticated_client, tournament, bracket
+    ):
+        match = Match.objects.filter(bracket=bracket).first()
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match.pair1 = pair1
+        match.pair2 = pair2
+        match.save(update_fields=["pair1", "pair2", "updated_at"])
+
+        authenticated_client.patch(
+            _score_url(tournament.pk, match.pk),
+            {"score": "6/4 6/4", "winner_id": pair1.pk},
+            format="json",
+        )
+
+        resp = api_client.get(_public_list_url(tournament.public_code))
+
+        assert resp.status_code == 200
+        payload = next(
+            m
+            for m in resp.json()
+            if m["round"] == match.round and m["match_number"] == match.match_number
+        )
+
+        assert payload["winner"] is not None
+        assert payload["winner"]["player1"]["first_name"] == pair1.player1.first_name
+        assert payload["winner"]["player1"]["last_name"] == pair1.player1.last_name
+        assert payload["winner"]["player2"]["first_name"] == pair1.player2.first_name
+        assert payload["winner"]["player2"]["last_name"] == pair1.player2.last_name

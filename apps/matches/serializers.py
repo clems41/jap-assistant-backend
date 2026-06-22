@@ -4,6 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.players.models import Pair
+from apps.players.serializers import PublicPairSerializer
 
 from .models import Bracket, Match, Round
 
@@ -201,6 +202,9 @@ class PublicMatchSerializer(serializers.ModelSerializer):
 
     round_display = serializers.CharField(source="get_display_round", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    pair1 = PublicPairSerializer(read_only=True)
+    pair2 = PublicPairSerializer(read_only=True)
+    winner = PublicPairSerializer(read_only=True)
     child1 = serializers.SerializerMethodField()
     child2 = serializers.SerializerMethodField()
 
@@ -213,7 +217,7 @@ class PublicMatchSerializer(serializers.ModelSerializer):
             "order",
             "pair1",
             "pair2",
-            "winner_id",
+            "winner",
             "game_format",
             "score",
             "child1",
@@ -252,6 +256,9 @@ class PublicMatchListSerializer(serializers.ModelSerializer):
 
     round_display = serializers.CharField(source="get_display_round", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    pair1 = PublicPairSerializer(read_only=True)
+    pair2 = PublicPairSerializer(read_only=True)
+    winner = PublicPairSerializer(read_only=True)
     estimated_start_at = serializers.SerializerMethodField()
 
     class Meta:
@@ -263,7 +270,7 @@ class PublicMatchListSerializer(serializers.ModelSerializer):
             "order",
             "pair1",
             "pair2",
-            "winner_id",
+            "winner",
             "game_format",
             "score",
             "status",
@@ -302,7 +309,14 @@ class PublicClassificationBracketSerializer(serializers.ModelSerializer):
         ]
 
     def get_root_match(self, obj: Bracket) -> dict:
-        root = obj.matches.get(round=Round.FINALE)
+        root = obj.matches.select_related(
+            "pair1__player1",
+            "pair1__player2",
+            "pair2__player1",
+            "pair2__player2",
+            "winner__player1",
+            "winner__player2",
+        ).get(round=Round.FINALE)
         return PublicMatchSerializer(root).data
 
     def get_children(self, obj: Bracket) -> list[dict]:
@@ -337,7 +351,14 @@ class PublicBracketSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(PublicMatchSerializer)
     def get_root_match(self, obj: Bracket) -> dict:
-        root = obj.matches.get(round=Round.FINALE)
+        root = obj.matches.select_related(
+            "pair1__player1",
+            "pair1__player2",
+            "pair2__player1",
+            "pair2__player2",
+            "winner__player1",
+            "winner__player2",
+        ).get(round=Round.FINALE)
         return PublicMatchSerializer(root).data
 
     @extend_schema_field(PublicClassificationBracketSerializer)

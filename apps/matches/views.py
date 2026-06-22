@@ -549,7 +549,15 @@ class PublicMatchListView(PublicTournamentScopedMixin, generics.ListAPIView):
     def get_queryset(self):
         qs = Match.objects.filter(
             bracket__tournament=self._tournament, disabled=False
-        ).select_related("bracket")
+        ).select_related(
+            "bracket",
+            "pair1__player1",
+            "pair1__player2",
+            "pair2__player1",
+            "pair2__player2",
+            "winner__player1",
+            "winner__player2",
+        )
 
         statuses = self.request.query_params.getlist("status")
         if statuses:

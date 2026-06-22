@@ -1,7 +1,7 @@
 import pytest
 from rest_framework.test import APIClient
 
-from apps.matches.models import Bracket
+from apps.matches.models import Bracket, Match
 from apps.players.tests.factories import PairFactory
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
@@ -14,7 +14,7 @@ EXPECTED_MATCH_FIELDS = {
     "order",
     "pair1",
     "pair2",
-    "winner_id",
+    "winner",
     "game_format",
     "score",
     "child1",
@@ -33,6 +33,14 @@ EXPECTED_CLASSIFICATION_BRACKET_FIELDS = {
     "root_match",
     "children",
 }
+EXPECTED_PLAYER_FIELDS = {"first_name", "last_name", "ranking", "club"}
+EXCLUDED_PLAYER_FIELDS = {"id", "license_number", "phone", "email", "birth_date"}
+EXPECTED_PAIR_FIELDS = {"player1", "player2", "weight"}
+EXCLUDED_PAIR_FIELDS = {"id", "created_at", "updated_at"}
+
+
+def _score_url(tournament_id: int, match_id: int) -> str:
+    return f"/api/v1/tournaments/{tournament_id}/matches/{match_id}/score/"
 
 
 def _public_bracket_url(code: str) -> str:
@@ -196,3 +204,103 @@ class TestPublicBracketAuthAndErrors:
     def test_delete_returns_405(self, api_client, tournament, bracket):
         resp = api_client.delete(_public_bracket_url(tournament.public_code))
         assert resp.status_code == 405
+
+
+@pytest.mark.django_db
+class TestPublicBracketNestedPairs:
+    def test_pair1_and_pair2_are_null_when_not_yet_placed(
+        self, api_client, tournament, bracket
+    ):
+        # `bracket` fixture is generated with zero seeding and no
+        # registered pairs, so no match has pair1/pair2 placed yet.
+        resp = api_client.get(_public_bracket_url(tournament.public_code))
+        root = resp.json()["root_match"]
+
+        for match in _walk_matches(root):
+            assert match["pair1"] is None
+            assert match["pair2"] is None
+
+    def test_winner_is_null_before_a_score_is_entered(
+        self, api_client, tournament, bracket
+    ):
+        resp = api_client.get(_public_bracket_url(tournament.public_code))
+        root = resp.json()["root_match"]
+
+        for match in _walk_matches(root):
+            assert match["winner"] is None
+
+    def test_pair_and_player_payloads_have_exact_field_sets_and_exclude_pii(
+        self, api_client, authenticated_client, tournament, bracket
+    ):
+        leaf = Match.objects.filter(bracket=bracket, round="QUART_DE_FINALE").order_by(
+            "match_number"
+        )[0]
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        leaf.pair1 = pair1
+        leaf.pair2 = pair2
+        leaf.save(update_fields=["pair1", "pair2", "updated_at"])
+
+        authenticated_client.patch(
+            _score_url(tournament.pk, leaf.pk),
+            {"score": "6/4 6/4", "winner_id": pair1.pk},
+            format="json",
+        )
+
+        resp = api_client.get(_public_bracket_url(tournament.public_code))
+        root = resp.json()["root_match"]
+
+        leaf_payload = next(
+            m
+            for m in _walk_matches(root)
+            if m["round"] == leaf.round and m["match_number"] == leaf.match_number
+        )
+
+        assert leaf_payload["winner"] is not None
+        for pair_payload in (
+            leaf_payload["pair1"],
+            leaf_payload["pair2"],
+            leaf_payload["winner"],
+        ):
+            assert set(pair_payload.keys()) == EXPECTED_PAIR_FIELDS
+            assert EXCLUDED_PAIR_FIELDS.isdisjoint(pair_payload.keys())
+            for player_payload in (pair_payload["player1"], pair_payload["player2"]):
+                assert set(player_payload.keys()) == EXPECTED_PLAYER_FIELDS
+                for excluded_field in EXCLUDED_PLAYER_FIELDS:
+                    assert excluded_field not in player_payload
+
+    def test_winner_player_names_match_the_winning_pair(
+        self, api_client, authenticated_client, tournament, bracket
+    ):
+        leaf = Match.objects.filter(bracket=bracket, round="QUART_DE_FINALE").order_by(
+            "match_number"
+        )[0]
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        leaf.pair1 = pair1
+        leaf.pair2 = pair2
+        leaf.save(update_fields=["pair1", "pair2", "updated_at"])
+
+        authenticated_client.patch(
+            _score_url(tournament.pk, leaf.pk),
+            {"score": "6/4 6/4", "winner_id": pair1.pk},
+            format="json",
+        )
+
+        resp = api_client.get(_public_bracket_url(tournament.public_code))
+        root = resp.json()["root_match"]
+
+        leaf_payload = next(
+            m
+            for m in _walk_matches(root)
+            if m["round"] == leaf.round and m["match_number"] == leaf.match_number
+        )
+
+        assert (
+            leaf_payload["winner"]["player1"]["first_name"] == pair1.player1.first_name
+        )
+        assert leaf_payload["winner"]["player1"]["last_name"] == pair1.player1.last_name
+        assert (
+            leaf_payload["winner"]["player2"]["first_name"] == pair1.player2.first_name
+        )
+        assert leaf_payload["winner"]["player2"]["last_name"] == pair1.player2.last_name

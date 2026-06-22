@@ -262,6 +262,30 @@ class PairSerializer(serializers.ModelSerializer):
         player.save()
 
 
+class PublicPlayerSerializer(serializers.ModelSerializer):
+    """Read-only, unauthenticated view of a player. Exposes only the
+    fields needed to display who's playing — excludes all PII (id,
+    license_number, phone, email, birth_date)."""
+
+    class Meta:
+        model = Player
+        fields = ["first_name", "last_name", "ranking", "club"]
+        read_only_fields = fields
+
+
+class PublicPairSerializer(serializers.ModelSerializer):
+    """Read-only, unauthenticated view of a pair. Nests the public player
+    representation for player1/player2 — excludes id/created_at/updated_at."""
+
+    player1 = PublicPlayerSerializer(read_only=True)
+    player2 = PublicPlayerSerializer(read_only=True)
+
+    class Meta:
+        model = Pair
+        fields = ["player1", "player2", "weight"]
+        read_only_fields = fields
+
+
 class PairImportSerializer(serializers.Serializer):
     file = serializers.FileField()
 

@@ -34,7 +34,7 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 CORS_ALLOWED_ORIGINS = env.list(  # noqa: F405
     "CORS_ALLOWED_ORIGINS",
-    default=["http://localhost:4000", "http://localhost:5173"],
+    default=["http://localhost:4200", "http://localhost:5173"],
 )
 
 # ---------------------------------------------------------------------------

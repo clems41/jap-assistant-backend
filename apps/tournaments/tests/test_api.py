@@ -1306,3 +1306,65 @@ class TestTimeSlotDetail:
         )
         response = authenticated_client.delete(url)
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+# ---------------------------------------------------------------------------
+# QR code URL
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestQrCodeUrl:
+    def test_retrieve_tournament_includes_qr_code_url(
+        self, authenticated_client: APIClient, user, settings
+    ) -> None:
+        """GET /tournaments/{id}/ exposes qr_code_url pointing to the public matches page."""
+        tournament = TournamentFactory(owner=user)
+        response = authenticated_client.get(DETAIL_URL.format(pk=tournament.pk))
+        assert response.status_code == status.HTTP_200_OK
+        expected = (
+            f"{settings.FRONTEND_URL}/public/tournaments/"
+            f"{tournament.public_code}/matches"
+        )
+        assert response.data["qr_code_url"] == expected
+
+    def test_list_tournaments_includes_qr_code_url(
+        self, authenticated_client: APIClient, user, settings
+    ) -> None:
+        """GET /tournaments/ also exposes qr_code_url on each item (shared serializer)."""
+        TournamentFactory.create_batch(2, owner=user)
+        response = authenticated_client.get(LIST_CREATE_URL)
+        assert response.status_code == status.HTTP_200_OK
+        for item in response.data["results"]:
+            assert "qr_code_url" in item
+            assert item["qr_code_url"].startswith(settings.FRONTEND_URL)
+
+    def test_qr_code_url_differs_per_tournament(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """Two different tournaments must get two different qr_code_url values,
+        each containing their own public_code."""
+        tournament_a = TournamentFactory(owner=user)
+        tournament_b = TournamentFactory(owner=user)
+        response_a = authenticated_client.get(DETAIL_URL.format(pk=tournament_a.pk))
+        response_b = authenticated_client.get(DETAIL_URL.format(pk=tournament_b.pk))
+        assert response_a.data["qr_code_url"] != response_b.data["qr_code_url"]
+        assert tournament_a.public_code in response_a.data["qr_code_url"]
+        assert tournament_b.public_code in response_b.data["qr_code_url"]
+
+    def test_qr_code_url_is_read_only(
+        self, authenticated_client: APIClient, user, settings
+    ) -> None:
+        """A PATCH attempting to override qr_code_url must be silently ignored."""
+        tournament = TournamentFactory(owner=user)
+        response = authenticated_client.patch(
+            DETAIL_URL.format(pk=tournament.pk),
+            {"qr_code_url": "https://evil.example.com/hack"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+        expected = (
+            f"{settings.FRONTEND_URL}/public/tournaments/"
+            f"{tournament.public_code}/matches"
+        )
+        assert response.data["qr_code_url"] == expected

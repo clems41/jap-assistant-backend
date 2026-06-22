@@ -1,9 +1,12 @@
+from django.conf import settings
 from rest_framework import serializers
 
 from apps.tournaments.models import TimeSlot, Tournament
 
 
 class TournamentSerializer(serializers.ModelSerializer):
+    qr_code_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Tournament
         fields = [
@@ -20,6 +23,7 @@ class TournamentSerializer(serializers.ModelSerializer):
             "estimated_match_duration",
             "status",
             "pairs_count",
+            "qr_code_url",
             "created_at",
             "updated_at",
         ]
@@ -28,9 +32,13 @@ class TournamentSerializer(serializers.ModelSerializer):
             "owner",
             "status",
             "pairs_count",
+            "qr_code_url",
             "created_at",
             "updated_at",
         ]
+
+    def get_qr_code_url(self, obj: Tournament) -> str:
+        return f"{settings.FRONTEND_URL}/public/tournaments/{obj.public_code}/matches"
 
 
 class PublicTournamentSerializer(serializers.ModelSerializer):

@@ -9,7 +9,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,9 +17,10 @@ from xlrd.sheet import Cell
 
 from apps.common.exceptions import ConflictError
 from apps.tournaments.models import Tournament
+from apps.tournaments.views import PublicTournamentScopedMixin
 
 from .models import Pair, Player
-from .serializers import PairImportSerializer, PairSerializer
+from .serializers import PairImportSerializer, PairSerializer, PublicPairSerializer
 from .services.ranking_matching_service import match_and_update_rankings
 
 SHEET_NAME = "Inscriptions"
@@ -310,6 +311,20 @@ class PairListCreateView(TournamentScopedMixin, generics.ListCreateAPIView):
         if self._tournament.is_locked:
             raise ConflictError("Les paires ne peuvent plus être modifiées.")
         serializer.save(tournament=self._tournament)
+
+
+class PublicPairListView(PublicTournamentScopedMixin, generics.ListAPIView):
+    """List all pairs of a tournament — public, unauthenticated, PII-free."""
+
+    serializer_class = PublicPairSerializer
+    permission_classes = [AllowAny]
+    pagination_class = None
+    filter_backends = []
+
+    def get_queryset(self):
+        return Pair.objects.filter(tournament=self._tournament).select_related(
+            "player1", "player2"
+        )
 
 
 class PairDetailView(TournamentScopedMixin, generics.RetrieveUpdateDestroyAPIView):

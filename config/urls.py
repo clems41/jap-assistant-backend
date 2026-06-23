@@ -10,6 +10,7 @@ api_v1_patterns = [
     # Public, unauthenticated, read-only access via Tournament.public_code
     path("public/tournaments/<str:code>/", include("apps.tournaments.public_urls")),
     path("public/tournaments/<str:code>/", include("apps.matches.public_urls")),
+    path("public/tournaments/<str:code>/", include("apps.players.public_urls")),
 ]
 
 urlpatterns = [

@@ -29,34 +29,26 @@ ALLOWED_HOSTS: list[str] = []
 # Applications
 # ---------------------------------------------------------------------------
 
-DJANGO_APPS = [
+INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
-    "django.contrib.staticfiles",
-]
-
-THIRD_PARTY_APPS = [
-    "rest_framework",
-    "rest_framework_simplejwt",
-    "rest_framework_simplejwt.token_blacklist",
-    "corsheaders",
-    "drf_spectacular",
     "channels",
-]
-
-LOCAL_APPS = [
+    "django.contrib.staticfiles",
     "apps.common",
     "apps.users",
     "apps.tournaments",
     "apps.players",
     "apps.matches",
     "apps.notifications",
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
+    "corsheaders",
+    "drf_spectacular",
 ]
-
-INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 # ---------------------------------------------------------------------------
 # Middleware

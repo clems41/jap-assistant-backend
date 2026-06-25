@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 import pytest
 from rest_framework.test import APIClient
 
 from apps.matches.models import Bracket, Match
+from apps.notifications.services import Resource
 from apps.players.tests.factories import PairFactory
 from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
@@ -250,6 +253,19 @@ class TestBracketCreate:
         assert Bracket.objects.filter(tournament=tournament).count() == 1
         assert Match.objects.filter(bracket__tournament=tournament).count() == 7
 
+    def test_post_notifies_matches_and_bracket(self, authenticated_client, tournament):
+        with patch("apps.matches.views.notify_public_update") as mock_notify:
+            resp = authenticated_client.post(
+                _bracket_url(tournament.pk),
+                {"dimension": 8, **_zero_seeding()},
+                format="json",
+            )
+
+        assert resp.status_code == 201
+        mock_notify.assert_called_once_with(
+            tournament, Resource.MATCHES, Resource.BRACKET
+        )
+
 
 @pytest.mark.django_db
 class TestBracketRetrieve:
@@ -416,6 +432,23 @@ class TestBracketDelete:
         )
         assert resp.status_code == 201
         assert resp.json()["dimension"] == 16
+
+    def test_delete_notifies_matches_bracket_and_tournament(
+        self, authenticated_client, tournament
+    ):
+        authenticated_client.post(
+            _bracket_url(tournament.pk),
+            {"dimension": 8, **_zero_seeding()},
+            format="json",
+        )
+
+        with patch("apps.matches.views.notify_public_update") as mock_notify:
+            resp = authenticated_client.delete(_bracket_url(tournament.pk))
+
+        assert resp.status_code == 204
+        mock_notify.assert_called_once_with(
+            tournament, Resource.MATCHES, Resource.BRACKET, Resource.TOURNAMENT
+        )
 
 
 @pytest.mark.django_db

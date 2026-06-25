@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.exceptions import ConflictError
+from apps.notifications.services import Resource, notify_public_update
 from apps.players.models import Pair
 from apps.tournaments.models import Tournament
 from apps.tournaments.views import PublicTournamentScopedMixin
@@ -115,6 +116,8 @@ class BracketView(TournamentScopedMixin, APIView):
             generate_classification_brackets(bracket, tournament)
             assign_match_order(bracket)
 
+        notify_public_update(tournament, Resource.MATCHES, Resource.BRACKET)
+
         return Response(BracketSerializer(bracket).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
@@ -143,6 +146,11 @@ class BracketView(TournamentScopedMixin, APIView):
         bracket.delete()
         if was_started:
             tournament.revert_to_set()
+
+        notify_public_update(
+            tournament, Resource.MATCHES, Resource.BRACKET, Resource.TOURNAMENT
+        )
+
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -191,6 +199,8 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
                 match.save(update_fields=["pair1", "pair2", "updated_at"])
 
             bracket.recompute_placement_flags()
+
+        notify_public_update(tournament, Resource.MATCHES, Resource.BRACKET)
 
         return Response(BracketSerializer(bracket).data)
 
@@ -290,6 +300,8 @@ class MatchOrderView(TournamentScopedMixin, APIView):
 
         with transaction.atomic():
             Match.objects.bulk_update(updated, ["order"])
+
+        notify_public_update(tournament, Resource.MATCHES)
 
         return Response(MatchSerializer(updated, many=True).data)
 
@@ -423,6 +435,8 @@ class MatchStartView(TournamentScopedMixin, APIView):
         match.started_at = timezone.now()
         match.save(update_fields=["status", "started_at", "updated_at"])
 
+        notify_public_update(tournament, Resource.MATCHES, Resource.BRACKET)
+
         return Response(MatchSerializer(match).data)
 
 
@@ -473,6 +487,10 @@ class MatchScoreView(TournamentScopedMixin, APIView):
         _propagate_winner(match, winner)
         _propagate_loser(match, loser)
         _advance_tournament_status(match, tournament)
+
+        notify_public_update(
+            tournament, Resource.MATCHES, Resource.BRACKET, Resource.TOURNAMENT
+        )
 
         return Response(MatchSerializer(match).data)
 
@@ -534,6 +552,10 @@ class MatchScoreView(TournamentScopedMixin, APIView):
 
         if match.round == Round.FINALE and match.bracket.parent_id is None:
             tournament.revert_to_started()
+
+        notify_public_update(
+            tournament, Resource.MATCHES, Resource.BRACKET, Resource.TOURNAMENT
+        )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

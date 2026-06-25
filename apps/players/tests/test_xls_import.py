@@ -7,11 +7,13 @@ per pair (columns suffixed " J1"/" J2"), plus a "Poids paire" column.
 
 import datetime
 import io
+from unittest.mock import patch
 
 import pytest
 import xlwt
 from rest_framework.test import APIClient
 
+from apps.notifications.services import Resource
 from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
@@ -235,6 +237,22 @@ class TestXlsImportHappyPath:
         )
         assert response.status_code == 201
         assert len(response.data) == 1
+
+    def test_xls_import_notifies_pairs_and_tournament(self, auth_client, tournament):
+        content = make_xls_content(
+            {"Licence J1": "NOTIFXLS0001", "Licence J2": "NOTIFXLS0002"}
+        )
+        f = make_xls_file(content)
+
+        with patch("apps.players.views.notify_public_update") as mock_notify:
+            response = auth_client.post(
+                import_url(tournament.id), data={"file": f}, format="multipart"
+            )
+
+        assert response.status_code == 201
+        mock_notify.assert_called_once_with(
+            tournament, Resource.PAIRS, Resource.TOURNAMENT
+        )
 
     def test_xls_import_creates_players_with_all_fields(self, auth_client, tournament):
         from apps.players.models import Player

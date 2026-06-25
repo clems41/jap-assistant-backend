@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 from xlrd.sheet import Cell
 
 from apps.common.exceptions import ConflictError
+from apps.notifications.services import Resource, notify_public_update
 from apps.tournaments.models import Tournament
 from apps.tournaments.views import PublicTournamentScopedMixin
 
@@ -311,6 +312,7 @@ class PairListCreateView(TournamentScopedMixin, generics.ListCreateAPIView):
         if self._tournament.is_locked:
             raise ConflictError("Les paires ne peuvent plus être modifiées.")
         serializer.save(tournament=self._tournament)
+        notify_public_update(self._tournament, Resource.PAIRS, Resource.TOURNAMENT)
 
 
 class PublicPairListView(PublicTournamentScopedMixin, generics.ListAPIView):
@@ -345,11 +347,13 @@ class PairDetailView(TournamentScopedMixin, generics.RetrieveUpdateDestroyAPIVie
         if self._tournament.is_locked:
             raise ConflictError("Les paires ne peuvent plus être modifiées.")
         serializer.save()
+        notify_public_update(self._tournament, Resource.PAIRS, Resource.TOURNAMENT)
 
     def perform_destroy(self, instance):
         if self._tournament.is_locked:
             raise ConflictError("Les paires ne peuvent plus être modifiées.")
         instance.delete()
+        notify_public_update(self._tournament, Resource.PAIRS, Resource.TOURNAMENT)
 
 
 class PairImportView(TournamentScopedMixin, APIView):
@@ -401,6 +405,9 @@ class PairImportView(TournamentScopedMixin, APIView):
             many=True,
             context={"request": request, "tournament": tournament},
         )
+
+        notify_public_update(tournament, Resource.PAIRS, Resource.TOURNAMENT)
+
         return Response(output.data, status=status.HTTP_201_CREATED)
 
 
@@ -433,4 +440,7 @@ class RankingMatchingView(TournamentScopedMixin, APIView):
             many=True,
             context={"request": request, "tournament": self._tournament},
         )
+
+        notify_public_update(self._tournament, Resource.PAIRS, Resource.TOURNAMENT)
+
         return Response(serializer.data)

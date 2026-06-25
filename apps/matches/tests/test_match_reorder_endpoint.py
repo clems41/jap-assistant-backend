@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 import pytest
 from rest_framework.test import APIClient
 
 from apps.matches.models import Bracket, Match
+from apps.notifications.services import Resource
 from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
@@ -277,3 +280,19 @@ class TestMatchReorderAuthAndState:
         )
 
         assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+class TestMatchReorderNotifiesPublicUpdate:
+    def test_patch_notifies_matches(
+        self, authenticated_client, tournament, upcoming_matches
+    ):
+        match_ids = [m.pk for m in reversed(upcoming_matches)]
+
+        with patch("apps.matches.views.notify_public_update") as mock_notify:
+            resp = authenticated_client.patch(
+                _order_url(tournament.pk), {"match_ids": match_ids}, format="json"
+            )
+
+        assert resp.status_code == 200
+        mock_notify.assert_called_once_with(tournament, Resource.MATCHES)

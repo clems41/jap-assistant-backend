@@ -1,9 +1,12 @@
+from unittest.mock import patch
+
 import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.matches.models import Match
 from apps.matches.tests.factories import BracketFactory, MatchFactory
+from apps.notifications.services import Resource
 from apps.players.tests.factories import PairFactory
 from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
@@ -178,3 +181,20 @@ class TestMatchStart:
         resp = authenticated_client.post(_start_url(tournament.pk, other_match.pk))
 
         assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestMatchStartNotifiesPublicUpdate:
+    def test_post_notifies_matches_and_bracket(self, authenticated_client, tournament):
+        bracket = BracketFactory(tournament=tournament)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="FINALE")
+
+        with patch("apps.matches.views.notify_public_update") as mock_notify:
+            resp = authenticated_client.post(_start_url(tournament.pk, match.pk))
+
+        assert resp.status_code == 200
+        mock_notify.assert_called_once_with(
+            tournament, Resource.MATCHES, Resource.BRACKET
+        )

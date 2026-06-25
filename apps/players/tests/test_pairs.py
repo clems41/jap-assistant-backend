@@ -8,9 +8,12 @@ The calculation must trigger automatically when rankings are provided.
 If either ranking is missing (None), weight stays unchanged.
 """
 
+from unittest.mock import patch
+
 import pytest
 from rest_framework.test import APIClient
 
+from apps.notifications.services import Resource
 from apps.players.tests.factories import PairFactory, PlayerFactory
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
@@ -582,3 +585,63 @@ class TestPairRankingUpdateBehavior:
                     "fill_rankings_for_players called with force=True for player1 "
                     "even though ranking was explicitly changed to a different value"
                 )
+
+
+# ---------------------------------------------------------------------------
+# TestPairNotifiesPublicUpdate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestPairNotifiesPublicUpdate:
+    def test_create_notifies_pairs_and_tournament(self, auth_client, tournament):
+        payload = {
+            "player1": {
+                "last_name": "Martin",
+                "first_name": "Julien",
+                "license_number": "NOTIF_CREATE001",
+                "phone": "",
+            },
+            "player2": {
+                "last_name": "Roux",
+                "first_name": "Quentin",
+                "license_number": "NOTIF_CREATE002",
+                "phone": "",
+            },
+        }
+
+        with patch("apps.players.views.notify_public_update") as mock_notify:
+            response = auth_client.post(
+                pairs_url(tournament.id), data=payload, format="json"
+            )
+
+        assert response.status_code == 201
+        mock_notify.assert_called_once_with(
+            tournament, Resource.PAIRS, Resource.TOURNAMENT
+        )
+
+    def test_update_notifies_pairs_and_tournament(self, auth_client, tournament):
+        pair = PairFactory(tournament=tournament, weight=100.0)
+
+        with patch("apps.players.views.notify_public_update") as mock_notify:
+            response = auth_client.patch(
+                pair_detail_url(tournament.id, pair.id),
+                data={"weight": 750.0},
+                format="json",
+            )
+
+        assert response.status_code == 200
+        mock_notify.assert_called_once_with(
+            tournament, Resource.PAIRS, Resource.TOURNAMENT
+        )
+
+    def test_destroy_notifies_pairs_and_tournament(self, auth_client, tournament):
+        pair = PairFactory(tournament=tournament)
+
+        with patch("apps.players.views.notify_public_update") as mock_notify:
+            response = auth_client.delete(pair_detail_url(tournament.id, pair.id))
+
+        assert response.status_code == 204
+        mock_notify.assert_called_once_with(
+            tournament, Resource.PAIRS, Resource.TOURNAMENT
+        )

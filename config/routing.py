@@ -3,8 +3,10 @@ WebSocket URL routing.
 Add your Channels consumers here as the project grows.
 """
 
-# Example: from apps.tournaments.consumers import TournamentConsumer
+from django.urls import path
+
+from apps.notifications.consumers import PublicTournamentConsumer
 
 websocket_urlpatterns = [
-    # path("ws/tournaments/<str:tournament_id>/", TournamentConsumer.as_asgi()),
+    path("ws/public/tournaments/<str:code>/", PublicTournamentConsumer.as_asgi()),
 ]

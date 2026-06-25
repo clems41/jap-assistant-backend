@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from apps.notifications.services import Resource
 from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory
@@ -549,3 +552,27 @@ def test_response_contains_pairs_with_players_and_weight(client, tournament):
     assert pair_data["weight"] == 300.0
     assert pair_data["player1"]["ranking"] == 100
     assert pair_data["player2"]["ranking"] == 200
+
+
+# ---------------------------------------------------------------------------
+# Notification temps réel
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_get_notifies_pairs_and_tournament(client, tournament):
+    player = PlayerFactory(ranking=None)
+    FFTRankingFactory(
+        last_name=player.last_name,
+        first_name=player.first_name,
+        ranking=42,
+        gender=Tournament.Gender.MALE,
+    )
+    partner = PlayerFactory(ranking=None)
+    PairFactory(tournament=tournament, player1=player, player2=partner)
+
+    with patch("apps.players.views.notify_public_update") as mock_notify:
+        response = client.get(url(tournament.pk))
+
+    assert response.status_code == status.HTTP_200_OK
+    mock_notify.assert_called_once_with(tournament, Resource.PAIRS, Resource.TOURNAMENT)

@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 import pytest
 from rest_framework.test import APIClient
 
 from apps.matches.models import Bracket, Match, Round
+from apps.notifications.services import Resource
 from apps.players.tests.factories import PairFactory
 from apps.tournaments.models import Tournament
 from apps.tournaments.tests.factories import TournamentFactory
@@ -830,3 +833,29 @@ class TestBracketPlacementStatusRestriction:
             placement_url(tournament.pk), payload, format="json"
         )
         assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+class TestBracketPlacementNotifiesPublicUpdate:
+    def test_patch_notifies_matches_and_bracket(
+        self, authenticated_client, tournament, bracket, leaf_matches, pairs
+    ):
+        payload = {
+            "placements": [
+                {
+                    "match_id": leaf_matches[0].pk,
+                    "pair1_id": pairs[0].pk,
+                    "pair2_id": pairs[1].pk,
+                },
+            ]
+        }
+
+        with patch("apps.matches.views.notify_public_update") as mock_notify:
+            resp = authenticated_client.patch(
+                placement_url(tournament.pk), payload, format="json"
+            )
+
+        assert resp.status_code == 200
+        mock_notify.assert_called_once_with(
+            tournament, Resource.MATCHES, Resource.BRACKET
+        )

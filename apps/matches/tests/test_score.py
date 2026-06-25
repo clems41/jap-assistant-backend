@@ -1,9 +1,12 @@
+from unittest.mock import patch
+
 import pytest
 from rest_framework.test import APIClient
 
 from apps.matches.models import Match
 from apps.matches.services import generate_match_tree
 from apps.matches.tests.factories import BracketFactory, MatchFactory
+from apps.notifications.services import Resource
 from apps.players.models import Pair
 from apps.players.tests.factories import PairFactory
 from apps.tournaments.models import Tournament
@@ -704,3 +707,40 @@ class TestMatchScoreDelete:
         assert resp.status_code == 200
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.FINISHED
+
+
+@pytest.mark.django_db
+class TestMatchScoreNotifiesPublicUpdate:
+    def test_patch_notifies_matches_bracket_and_tournament(
+        self, authenticated_client, tournament
+    ):
+        bracket = BracketFactory(tournament=tournament)
+        pair1 = PairFactory(tournament=tournament)
+        pair2 = PairFactory(tournament=tournament)
+        match = MatchFactory(bracket=bracket, pair1=pair1, pair2=pair2, round="FINALE")
+
+        with patch("apps.matches.views.notify_public_update") as mock_notify:
+            resp = authenticated_client.patch(
+                _score_url(tournament.pk, match.pk),
+                {"score": "6/4 7/5", "winner_id": pair1.pk},
+                format="json",
+            )
+
+        assert resp.status_code == 200
+        mock_notify.assert_called_once_with(
+            tournament, Resource.MATCHES, Resource.BRACKET, Resource.TOURNAMENT
+        )
+
+    def test_delete_notifies_matches_bracket_and_tournament(
+        self, authenticated_client, tournament
+    ):
+        tree = _build_fully_scored_dim8_tree(authenticated_client, tournament)
+        finale = tree["finale"]
+
+        with patch("apps.matches.views.notify_public_update") as mock_notify:
+            resp = authenticated_client.delete(_score_url(tournament.pk, finale.pk))
+
+        assert resp.status_code == 204
+        mock_notify.assert_called_once_with(
+            tournament, Resource.MATCHES, Resource.BRACKET, Resource.TOURNAMENT
+        )

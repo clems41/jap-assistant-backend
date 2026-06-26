@@ -1,11 +1,13 @@
 import heapq
+import random
 from datetime import datetime, timedelta
 
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 from apps.tournaments.models import Tournament
 
-from .models import ROUND_BY_SIZE, ROUNDS_BY_DIMENSION, Bracket, Match
+from .models import ROUND_BY_SIZE, ROUNDS_BY_DIMENSION, Bracket, Match, Round
 
 COURT_CHANGEOVER = timedelta(minutes=5)
 
@@ -79,6 +81,176 @@ def place_top_seeds(bracket: Bracket, tournament: Tournament) -> None:
     top_match = Match.objects.get(bracket=bracket, round=round_name, match_number=1)
     top_match.pair1 = second_seed
     top_match.save(update_fields=["pair1", "updated_at"])
+
+
+def _collect_premier_tour_slots(
+    node: Match | None,
+    premier_tour_round: str,
+    by_id: dict[int, Match],
+) -> list[tuple[Match, str]]:
+    """Recursively collect available pair slots at the `premier_tour_round`
+    level within the subtree rooted at `node`.
+
+    A slot is available when its pair_id is None and pair_can_be_placed is True.
+    Disabled nodes and their subtrees are skipped entirely.
+    """
+    if node is None or node.disabled:
+        return []
+    if node.round == premier_tour_round:
+        slots: list[tuple[Match, str]] = []
+        if node.pair1_id is None and node.pair1_can_be_placed:
+            slots.append((node, "pair1"))
+        if node.pair2_id is None and node.pair2_can_be_placed:
+            slots.append((node, "pair2"))
+        return slots
+    return _collect_premier_tour_slots(
+        by_id.get(node.child1_id), premier_tour_round, by_id
+    ) + _collect_premier_tour_slots(
+        by_id.get(node.child2_id), premier_tour_round, by_id
+    )
+
+
+def draw_pairs(bracket: Bracket, tournament: Tournament) -> None:
+    """Randomly assign all unplaced pairs to the available slots in the bracket.
+
+    Follows FFT seeding rules:
+    - The strongest unplaced pairs fill non-premier-tour slots first (e.g. quarts).
+    - Among premier-tour slots (huitièmes in a typical 12-pair bracket):
+        * Weaker pairs (high weight) are placed on the seeded side of each
+          huitième (pair1 in the demie1 half, pair2 in the demie2 half) because
+          the top seeds are expected to beat them before the semis.
+        * Stronger remaining pairs (low weight) go on the opposite side.
+    - Slot assignment within each weight group is randomized via random.shuffle.
+
+    Idempotent: if there are no unplaced pairs, returns immediately with no
+    changes. Already-placed pairs (including TS1/TS2) are never touched.
+
+    Raises:
+        ValidationError: if any unplaced pair has weight=None.
+    """
+    # Step 1 — nothing to do if no entry rounds are configured
+    entrant_sizes = sorted(
+        size
+        for size in ROUND_BY_SIZE
+        if size <= bracket.dimension and getattr(bracket, f"nb_pair_round_{size}") > 0
+    )
+    if not entrant_sizes:
+        return
+
+    premier_tour_round = ROUND_BY_SIZE[entrant_sizes[-1]]
+
+    # Step 2 — load all matches indexed by pk
+    matches = list(bracket.matches.all())
+    by_id: dict[int, Match] = {m.pk: m for m in matches}
+
+    # Step 3 — collect available slots
+    other_slots: list[tuple[Match, str]] = []
+    for match in matches:
+        if match.disabled or match.round == premier_tour_round:
+            continue
+        if match.pair1_id is None and match.pair1_can_be_placed:
+            other_slots.append((match, "pair1"))
+        if match.pair2_id is None and match.pair2_can_be_placed:
+            other_slots.append((match, "pair2"))
+
+    demie1 = next(
+        (m for m in matches if m.round == Round.DEMIE_FINALE and m.match_number == 1), None
+    )
+    demie2 = next(
+        (m for m in matches if m.round == Round.DEMIE_FINALE and m.match_number == 2), None
+    )
+
+    demie1_slots = _collect_premier_tour_slots(demie1, premier_tour_round, by_id)
+    demie2_slots = _collect_premier_tour_slots(demie2, premier_tour_round, by_id)
+
+    # pair1 in demie1 half and pair2 in demie2 half receive the strongest
+    # remaining pairs (lowest weight); opposite slots receive the weakest.
+    low_weight_slots: list[tuple[Match, str]] = (
+        [(m, s) for m, s in demie1_slots if s == "pair1"]
+        + [(m, s) for m, s in demie2_slots if s == "pair2"]
+    )
+    high_weight_slots: list[tuple[Match, str]] = (
+        [(m, s) for m, s in demie1_slots if s == "pair2"]
+        + [(m, s) for m, s in demie2_slots if s == "pair1"]
+    )
+
+    # Step 4 — identify unplaced pairs
+    placed_pair_ids: set[int] = set()
+    for match in matches:
+        if match.pair1_id is not None:
+            placed_pair_ids.add(match.pair1_id)
+        if match.pair2_id is not None:
+            placed_pair_ids.add(match.pair2_id)
+
+    unplaced_pairs = list(tournament.pairs.exclude(id__in=placed_pair_ids))
+
+    if not unplaced_pairs:
+        return
+
+    # Step 5 — all unplaced pairs must have a weight
+    for pair in unplaced_pairs:
+        if pair.weight is None:
+            raise ValidationError(
+                {
+                    "pairs": [
+                        "Toutes les paires doivent avoir un poids pour effectuer le tirage."
+                    ]
+                }
+            )
+
+    # Step 6 — sort by weight ascending (lowest weight = strongest first)
+    unplaced_pairs.sort(key=lambda p: p.weight)
+
+    # Step 7 — strongest pairs fill non-premier-tour slots, level by level.
+    # Slots at the highest level (smallest round size, e.g. quart=8) receive
+    # the strongest pairs; each level is shuffled independently so placement
+    # within a round stays random.
+    n_other = len(other_slots)
+    other_pairs = unplaced_pairs[:n_other]
+    remaining_pairs = unplaced_pairs[n_other:]
+
+    round_to_size = {v: k for k, v in ROUND_BY_SIZE.items()}
+    other_slots_by_round: dict[str, list[tuple[Match, str]]] = {}
+    for match, slot in other_slots:
+        other_slots_by_round.setdefault(match.round, []).append((match, slot))
+
+    modified_matches: dict[int, Match] = {}
+    pair_idx = 0
+    for round_name in sorted(other_slots_by_round, key=lambda r: round_to_size[r]):
+        round_slots = other_slots_by_round[round_name]
+        random.shuffle(round_slots)
+        for match, slot in round_slots:
+            setattr(match, f"{slot}_id", other_pairs[pair_idx].pk)
+            modified_matches[match.pk] = match
+            pair_idx += 1
+
+    # Step 8 — distribute premier-tour pairs by weight group
+    n_low = len(low_weight_slots)
+    low_weight_pairs = remaining_pairs[:n_low]
+    high_weight_pairs = remaining_pairs[n_low:]
+
+    random.shuffle(low_weight_slots)
+    for (match, slot), pair in zip(low_weight_slots, low_weight_pairs, strict=False):
+        setattr(match, f"{slot}_id", pair.pk)
+        modified_matches[match.pk] = match
+
+    random.shuffle(high_weight_slots)
+    for (match, slot), pair in zip(high_weight_slots, high_weight_pairs, strict=False):
+        setattr(match, f"{slot}_id", pair.pk)
+        modified_matches[match.pk] = match
+
+    # Step 9 — persist all changes in one round-trip
+    if modified_matches:
+        now = timezone.now()
+        for match in modified_matches.values():
+            match.updated_at = now
+        Match.objects.bulk_update(
+            list(modified_matches.values()),
+            ["pair1_id", "pair2_id", "updated_at"],
+        )
+
+    # Step 10 — recompute placement flags to reflect new assignments
+    bracket.recompute_placement_flags()
 
 
 def generate_classification_brackets(

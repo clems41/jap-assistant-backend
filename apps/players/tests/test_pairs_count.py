@@ -12,7 +12,6 @@ and post_delete.
 import pytest
 from rest_framework.test import APIClient
 
-from apps.players.models import Pair
 from apps.players.tests.factories import PairFactory, PlayerFactory
 from apps.tournaments.tests.factories import TournamentFactory
 from apps.users.tests.factories import UserFactory

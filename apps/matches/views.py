@@ -32,6 +32,7 @@ from .serializers import (
 from .services import (
     assign_match_order,
     compute_estimated_start_times,
+    draw_pairs,
     generate_classification_brackets,
     generate_match_tree,
     place_top_seeds,
@@ -199,6 +200,47 @@ class BracketPlacementView(TournamentScopedMixin, APIView):
                 match.save(update_fields=["pair1", "pair2", "updated_at"])
 
             bracket.recompute_placement_flags()
+
+        notify_public_update(tournament, Resource.MATCHES, Resource.BRACKET)
+
+        return Response(BracketSerializer(bracket).data)
+
+
+class BracketDrawView(TournamentScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={200: BracketSerializer},
+        parameters=[
+            OpenApiParameter(
+                name="tournament_id", location=OpenApiParameter.PATH, type=int
+            ),
+        ],
+        summary="Tirage au sort automatique des paires",
+        description=(
+            "Effectue le tirage au sort des paires non encore placées dans le tableau "
+            "principal. Les paires les plus fortes (poids le plus faible) sont placées "
+            "dans les tours les plus avancés, les suivantes dans les huitièmes. "
+            "Au premier tour, les paires les plus faibles sont placées du côté des têtes "
+            "de série pour qu'elles s'affrontent dès le premier tour. "
+            "L'opération est idempotente : si toutes les paires sont déjà placées, "
+            "retourne 200 sans modification. "
+            "Les placements manuels existants sont conservés. "
+            "Retourne 404 si aucun tableau principal n'existe, 409 si le tournoi est "
+            "terminé, 400 si une paire non placée n'a pas de poids renseigné."
+        ),
+    )
+    def post(self, request: Request, tournament_id: int) -> Response:
+        tournament = self._tournament
+
+        if tournament.is_finished:
+            raise ConflictError(
+                "Le tirage ne peut pas être effectué : le tournoi est terminé."
+            )
+
+        bracket = get_object_or_404(Bracket, tournament=tournament, parent__isnull=True)
+
+        draw_pairs(bracket, tournament)
 
         notify_public_update(tournament, Resource.MATCHES, Resource.BRACKET)
 

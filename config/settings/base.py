@@ -30,6 +30,7 @@ ALLOWED_HOSTS: list[str] = []
 # ---------------------------------------------------------------------------
 
 INSTALLED_APPS = [
+    "daphne",  # must be first to override runserver with ASGI-capable version
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",

@@ -18,6 +18,7 @@ dependencies = [
     "qrcode[pil]>=8.0",
     "Pillow>=11.1",
     "gunicorn>=23.0",
+    "uvicorn>=0.32",
     "whitenoise>=6.8",
     "pypdfium2>=4",
     "xlrd>=2.0.2",

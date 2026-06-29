@@ -1,3 +1,5 @@
 build:
   docker:
-    web: docker/prod/Dockerfile
+    web:
+      dockerfile: docker/prod/Dockerfile
+      context: .

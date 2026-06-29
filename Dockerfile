@@ -23,7 +23,7 @@ RUN uv sync --no-group dev --no-install-project --frozen
 
 COPY . .
 
-COPY docker/prod/entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000

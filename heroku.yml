@@ -1,5 +1,3 @@
 build:
   docker:
-    web:
-      dockerfile: docker/prod/Dockerfile
-      context: .
+    web: Dockerfile

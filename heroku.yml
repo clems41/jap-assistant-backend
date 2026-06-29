@@ -1,6 +1,3 @@
 build:
   docker:
-    jap-assistant-backend: docker/prod/Dockerfile
-run:
-  web:
-    jap-assistant-backend: sebania
+    web: docker/prod/Dockerfile

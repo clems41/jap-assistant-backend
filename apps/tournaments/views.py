@@ -124,7 +124,8 @@ _TOURNAMENT_LIST_FILTERS = [
         type=OpenApiTypes.STR,
         location=OpenApiParameter.QUERY,
         required=False,
-        description="Filtrer par statut (DRAFT, SET, READY, STARTED, FINISHED).",
+        many=True,
+        description="Filtrer par statut. Répétable : ?status=DRAFT&status=STARTED.",
         enum=[s.value for s in Tournament.Status],
     ),
 ]
@@ -158,9 +159,9 @@ class TournamentListCreateView(generics.ListCreateAPIView):
         if end_date is not None:
             qs = qs.filter(start_date__lte=end_date)
 
-        tournament_status: str | None = self.request.query_params.get("status")
-        if tournament_status is not None:
-            qs = qs.filter(status=tournament_status)
+        tournament_statuses: list[str] = self.request.query_params.getlist("status")
+        if tournament_statuses:
+            qs = qs.filter(status__in=tournament_statuses)
 
         return qs
 

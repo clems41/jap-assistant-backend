@@ -765,6 +765,21 @@ class TestFilterTournaments:
         assert response.status_code == status.HTTP_200_OK
         assert response.data["count"] == 0
 
+    def test_filter_by_multiple_statuses(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?status=DRAFT&status=STARTED returns tournaments matching either status."""
+        TournamentFactory.create_batch(2, owner=user, status=Tournament.Status.DRAFT)
+        TournamentFactory.create_batch(1, owner=user, status=Tournament.Status.STARTED)
+        TournamentFactory.create_batch(1, owner=user, status=Tournament.Status.FINISHED)
+        response = authenticated_client.get(
+            LIST_CREATE_URL + "?status=DRAFT&status=STARTED"
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 3
+        returned_statuses = {t["status"] for t in response.data["results"]}
+        assert returned_statuses == {"DRAFT", "STARTED"}
+
 
 # ---------------------------------------------------------------------------
 # Ordering

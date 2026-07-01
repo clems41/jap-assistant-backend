@@ -119,6 +119,14 @@ _TOURNAMENT_LIST_FILTERS = [
         required=False,
         description="Borne supérieure sur la date de début (inclusive, format ISO 8601).",
     ),
+    OpenApiParameter(
+        name="status",
+        type=OpenApiTypes.STR,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="Filtrer par statut (DRAFT, SET, READY, STARTED, FINISHED).",
+        enum=[s.value for s in Tournament.Status],
+    ),
 ]
 
 
@@ -149,6 +157,10 @@ class TournamentListCreateView(generics.ListCreateAPIView):
         end_date: str | None = self.request.query_params.get("end_date")
         if end_date is not None:
             qs = qs.filter(start_date__lte=end_date)
+
+        tournament_status: str | None = self.request.query_params.get("status")
+        if tournament_status is not None:
+            qs = qs.filter(status=tournament_status)
 
         return qs
 

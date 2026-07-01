@@ -745,6 +745,26 @@ class TestFilterTournaments:
         assert response.status_code == status.HTTP_200_OK
         assert response.data["count"] == 4
 
+    def test_filter_by_status_returns_matching_tournaments(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?status=DRAFT returns only DRAFT tournaments."""
+        TournamentFactory.create_batch(2, owner=user, status=Tournament.Status.DRAFT)
+        TournamentFactory.create_batch(1, owner=user, status=Tournament.Status.STARTED)
+        response = authenticated_client.get(LIST_CREATE_URL, {"status": "DRAFT"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 2
+        assert all(t["status"] == "DRAFT" for t in response.data["results"])
+
+    def test_filter_by_status_no_match_returns_empty(
+        self, authenticated_client: APIClient, user
+    ) -> None:
+        """?status=FINISHED returns empty list when no finished tournaments exist."""
+        TournamentFactory.create_batch(2, owner=user, status=Tournament.Status.DRAFT)
+        response = authenticated_client.get(LIST_CREATE_URL, {"status": "FINISHED"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 0
+
 
 # ---------------------------------------------------------------------------
 # Ordering

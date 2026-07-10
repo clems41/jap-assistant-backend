@@ -95,6 +95,22 @@ Pour la production, ajouter également `ALLOWED_HOSTS`, `EMAIL_*`, et optionnell
 
 ## Développement
 
+### Environnement virtuel local (pour l'IDE)
+
+Le `.venv` utilisé par Docker est construit **à l'intérieur de l'image** (voir `docker/local/Dockerfile`) et n'est jamais monté dans le conteneur — il est totalement indépendant de tout `.venv` présent sur ta machine. Pour que ton IDE résolve les imports et arrête de signaler des erreurs sur les libs installées, il faut donc un `.venv` **local**, séparé de Docker :
+
+```bash
+uv sync --all-groups
+```
+
+Cette commande n'a aucun impact sur Docker : modifier ou supprimer ton `.venv` local ne casse rien côté conteneur, et inversement, rebuild l'image Docker ne touche pas à ton `.venv` local.
+
+> ⚠️ Si `uv sync` échoue avec une erreur de permission sur `.venv` (ex: `Permission denied`), c'est que le dossier appartient à un autre utilisateur (souvent `root`, suite à une commande lancée par erreur avec `sudo`). Supprime-le puis relance :
+> ```bash
+> sudo rm -rf .venv
+> uv sync --all-groups
+> ```
+
 ### Commandes courantes
 
 ```bash

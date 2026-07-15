@@ -37,3 +37,17 @@ class TestSignalStatusView:
         assert response.data["pair_post_save_count"] >= 2
         assert response.data["pair_post_delete_count"] >= 2
         assert response.data["player_post_save_count"] >= 1
+
+    def test_raw_receivers_report_matching_sender_ids(
+        self, authenticated_client: APIClient
+    ) -> None:
+        """In a single, freshly-loaded test process, register_signals() only
+        ever runs once, so every raw entry's sender_id must match the current
+        Tournament/Pair/Player class id."""
+        response = authenticated_client.get(SIGNAL_STATUS_URL)
+
+        assert response.status_code == status.HTTP_200_OK
+        raw_receivers = response.data["raw_receivers"]
+        assert len(raw_receivers) >= 4
+        assert all(entry["alive"] for entry in raw_receivers)
+        assert all(entry["sender_matches_current"] for entry in raw_receivers)

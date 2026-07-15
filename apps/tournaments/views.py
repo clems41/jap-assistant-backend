@@ -249,15 +249,46 @@ class _SignalStatusSerializer(Serializer):
     pair_post_save_count = serializers.IntegerField()
     pair_post_delete_count = serializers.IntegerField()
     player_post_save_count = serializers.IntegerField()
+    id_tournament = serializers.IntegerField()
+    id_pair = serializers.IntegerField()
+    id_player = serializers.IntegerField()
+    raw_receivers = serializers.ListField(child=serializers.DictField())
+
+
+def _raw_dispatch_uid_receivers(signal, expected_sender_id: int) -> list[dict]:
+    """Inspect a Signal's internal receivers list for every entry registered
+    with a "tournaments."-prefixed dispatch_uid, reporting the sender id it
+    was actually connected against and whether that still matches the sender
+    class currently in use by this process."""
+    entries = []
+    for receiver_entry in signal.receivers:
+        lookup_key, receiver_ref = receiver_entry[0], receiver_entry[1]
+        dispatch_uid = lookup_key[0]
+        if not (isinstance(dispatch_uid, str) and dispatch_uid.startswith("tournaments.")):
+            continue
+        receiver = receiver_ref() if callable(receiver_ref) else receiver_ref
+        entries.append(
+            {
+                "dispatch_uid": dispatch_uid,
+                "sender_id": lookup_key[1],
+                "sender_matches_current": lookup_key[1] == expected_sender_id,
+                "alive": receiver is not None,
+            }
+        )
+    return entries
 
 
 class SignalStatusView(APIView):
     """Debug tool: report how many live post_save/post_delete receivers are
-    registered for Tournament/Pair/Player in this process.
+    registered for Tournament/Pair/Player in this process, plus a raw dump of
+    each "tournaments."-dispatch_uid receiver's registered sender id compared
+    against the sender class id currently seen by this process.
 
     Used to check whether apps.tournaments.signals.register_signals() (called
     from TournamentsConfig.ready()) actually ran — if tournament_post_save_count
-    is 0, the automatic status recompute on save() is dead in this process.
+    is 0, the automatic status recompute on save() is dead in this process. If
+    counts are doubled with sender_matches_current=False entries, the receiver
+    was connected against a stale/different Tournament class object.
     """
 
     permission_classes = [IsAuthenticated]
@@ -266,12 +297,39 @@ class SignalStatusView(APIView):
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         from apps.players.models import Pair, Player
 
+        raw_receivers = [
+            *[
+                {"signal": "post_save", **entry}
+                for entry in _raw_dispatch_uid_receivers(post_save, id(Tournament))
+                if entry["dispatch_uid"] == "tournaments.tournament_post_save"
+            ],
+            *[
+                {"signal": "post_save", **entry}
+                for entry in _raw_dispatch_uid_receivers(post_save, id(Pair))
+                if entry["dispatch_uid"] == "tournaments.pair_post_save"
+            ],
+            *[
+                {"signal": "post_delete", **entry}
+                for entry in _raw_dispatch_uid_receivers(post_delete, id(Pair))
+                if entry["dispatch_uid"] == "tournaments.pair_post_delete"
+            ],
+            *[
+                {"signal": "post_save", **entry}
+                for entry in _raw_dispatch_uid_receivers(post_save, id(Player))
+                if entry["dispatch_uid"] == "tournaments.player_post_save"
+            ],
+        ]
+
         return Response(
             {
                 "tournament_post_save_count": len(post_save._live_receivers(Tournament)),
                 "pair_post_save_count": len(post_save._live_receivers(Pair)),
                 "pair_post_delete_count": len(post_delete._live_receivers(Pair)),
                 "player_post_save_count": len(post_save._live_receivers(Player)),
+                "id_tournament": id(Tournament),
+                "id_pair": id(Pair),
+                "id_player": id(Player),
+                "raw_receivers": raw_receivers,
             }
         )
 

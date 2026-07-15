@@ -1,8 +1,10 @@
+import datetime
 import functools
+import io
 import re
 from dataclasses import dataclass
 
-import xlrd
+import openpyxl
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -13,7 +15,6 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from xlrd.sheet import Cell
 
 from apps.common.exceptions import ConflictError
 from apps.notifications.services import Resource, notify_public_update
@@ -24,28 +25,28 @@ from .models import Pair, Player
 from .serializers import PairImportSerializer, PairSerializer, PublicPairSerializer
 from .services.ranking_matching_service import match_and_update_rankings
 
-SHEET_NAME = "Inscriptions"
+SHEET_NAME = "Tableau final"
 
 EXPECTED_HEADERS = [
-    "Epreuve",
-    "Catégorie d'âge",
-    "Rang",
-    "Nom J1",
-    "Prénom J1",
-    "Naissance J1",
-    "Licence J1",
-    "Club J1",
-    "Classement J1",
-    "Courriel J1",
-    "Portable J1",
-    "Nom J2",
-    "Prénom J2",
-    "Naissance J2",
-    "Licence J2",
-    "Club J2",
-    "Classement J2",
-    "Courriel J2",
-    "Portable J2",
+    "Nom de l'épreuve",
+    "Catégorie de l'épreuve",
+    "Position de la paire",
+    "Nom joueur 1",
+    "Prénom joueur 1",
+    "Date de naissance joueur 1",
+    "Licence joueur 1",
+    "Club joueur 1",
+    "Classement joueur 1",
+    "Mail joueur 1",
+    "Téléphone joueur 1",
+    "Nom joueur 2",
+    "Prénom joueur 2",
+    "Date de naissance joueur 2",
+    "Licence joueur 2",
+    "Club joueur 2",
+    "Classement joueur 2",
+    "Mail joueur 2",
+    "Téléphone joueur 2",
     "Poids paire",
 ]
 
@@ -62,55 +63,50 @@ class ParsedPairRow:
     weight: float | None
 
 
-def _cell_to_str(cell: Cell) -> str:
-    """Normalize an xlrd cell to a stripped string, handling text and numeric types.
+def _value_to_str(value: object) -> str:
+    """Normalize a raw openpyxl cell value to a stripped string.
 
-    A numeric cell (XL_CELL_NUMBER) that holds an integer-looking value (e.g. a
-    license number or ranking exported as an Excel number) must not produce a
+    A numeric value that holds an integer-looking float (e.g. a license
+    number or ranking exported as an Excel number) must not produce a
     trailing ".0" artifact.
     """
-    if cell.ctype == xlrd.XL_CELL_EMPTY or cell.ctype == xlrd.XL_CELL_BLANK:
+    if value is None:
         return ""
-    if cell.ctype == xlrd.XL_CELL_NUMBER:
-        value = cell.value
+    if isinstance(value, float):
         if value == int(value):
             return str(int(value))
         return str(value)
-    return str(cell.value).strip()
+    return str(value).strip()
 
 
-def _cell_to_int(cell: Cell) -> int | None:
-    raw = _cell_to_str(cell)
+def _value_to_int(value: object) -> int | None:
+    raw = _value_to_str(value)
     if not raw:
         return None
     return int(float(raw))
 
 
-def _cell_to_float(cell: Cell) -> float | None:
-    raw = _cell_to_str(cell)
+def _value_to_float(value: object) -> float | None:
+    raw = _value_to_str(value)
     if not raw:
         return None
     return float(raw)
 
 
-def _cell_to_date(cell: Cell, workbook: xlrd.Book) -> tuple[object | None, str | None]:
-    """Return (date, error). Supports XL_CELL_DATE and a JJ/MM/AAAA text fallback."""
-    if cell.ctype == xlrd.XL_CELL_EMPTY or cell.ctype == xlrd.XL_CELL_BLANK:
+def _value_to_date(value: object) -> tuple[datetime.date | None, str | None]:
+    """Return (date, error). Supports native datetime values and a JJ/MM/AAAA
+    text fallback."""
+    if value is None or value == "":
         return None, None
-    if cell.ctype == xlrd.XL_CELL_DATE:
-        try:
-            return xlrd.xldate.xldate_as_datetime(
-                cell.value, workbook.datemode
-            ).date(), None
-        except xlrd.xldate.XLDateError:
-            return None, "date de naissance invalide"
-    raw = _cell_to_str(cell)
+    if isinstance(value, datetime.datetime):
+        return value.date(), None
+    if isinstance(value, datetime.date):
+        return value, None
+    raw = _value_to_str(value)
     if not raw:
         return None, None
     try:
         day, month, year = raw.split("/")
-        import datetime
-
         return datetime.date(int(year), int(month), int(day)), None
     except (ValueError, TypeError):
         return None, "date de naissance invalide"
@@ -126,9 +122,9 @@ def _strip_license_season_suffix(raw: str) -> str:
     return _LICENSE_SEASON_SUFFIX_RE.sub("", raw).strip()
 
 
-def _build_header_index(header_row: list[Cell]) -> dict[str, int]:
+def _build_header_index(header_row: tuple) -> dict[str, int]:
     """Resolve each expected header to its actual column index (lookup by name)."""
-    actual = [str(cell.value).strip() for cell in header_row]
+    actual = [_value_to_str(value) for value in header_row]
     index: dict[str, int] = {}
     for header in EXPECTED_HEADERS:
         if header not in actual:
@@ -138,22 +134,24 @@ def _build_header_index(header_row: list[Cell]) -> dict[str, int]:
 
 
 def _build_player_defaults(
-    sheet, row_idx: int, col: dict[str, int], workbook: xlrd.Book, suffix: str
+    row: tuple, col: dict[str, int], suffix: str
 ) -> tuple[str, dict, str | None]:
-    """Build (license_number, defaults, error) for one player (J1 or J2) of a row.
+    """Build (license_number, defaults, error) for one player (joueur 1 or
+    joueur 2) of a row.
 
-    `suffix` is " J1" or " J2". Mirrors the field-by-field priority rules:
+    `suffix` is " joueur 1" or " joueur 2". Mirrors the field-by-field
+    priority rules:
     - last_name/first_name/club/email/phone: always overwritten from file (even blank).
     - ranking/birth_date: omitted from defaults when the cell is empty, to
       preserve whatever the DB already has.
     """
-    last_name = _cell_to_str(sheet.cell(row_idx, col[f"Nom{suffix}"]))
-    first_name = _cell_to_str(sheet.cell(row_idx, col[f"Prénom{suffix}"]))
-    club = _cell_to_str(sheet.cell(row_idx, col[f"Club{suffix}"]))
-    email = _cell_to_str(sheet.cell(row_idx, col[f"Courriel{suffix}"]))
-    phone = _cell_to_str(sheet.cell(row_idx, col[f"Portable{suffix}"]))
+    last_name = _value_to_str(row[col[f"Nom{suffix}"]])
+    first_name = _value_to_str(row[col[f"Prénom{suffix}"]])
+    club = _value_to_str(row[col[f"Club{suffix}"]])
+    email = _value_to_str(row[col[f"Mail{suffix}"]])
+    phone = _value_to_str(row[col[f"Téléphone{suffix}"]])
 
-    license_raw = _cell_to_str(sheet.cell(row_idx, col[f"Licence{suffix}"]))
+    license_raw = _value_to_str(row[col[f"Licence{suffix}"]])
     license_number = _strip_license_season_suffix(license_raw)
 
     defaults: dict = {
@@ -164,13 +162,11 @@ def _build_player_defaults(
         "phone": phone,
     }
 
-    ranking = _cell_to_int(sheet.cell(row_idx, col[f"Classement{suffix}"]))
+    ranking = _value_to_int(row[col[f"Classement{suffix}"]])
     if ranking is not None:
         defaults["ranking"] = ranking
 
-    birth_date, date_error = _cell_to_date(
-        sheet.cell(row_idx, col[f"Naissance{suffix}"]), workbook
-    )
+    birth_date, date_error = _value_to_date(row[col[f"Date de naissance{suffix}"]])
     if date_error:
         return license_number, defaults, date_error
     if birth_date is not None:
@@ -179,26 +175,29 @@ def _build_player_defaults(
     return license_number, defaults, None
 
 
-def _parse_xls(content: bytes) -> tuple[list[ParsedPairRow], str | None]:
-    """Parse the uploaded .xls bytes into a list of ParsedPairRow.
+def _parse_xlsx(content: bytes) -> tuple[list[ParsedPairRow], str | None]:
+    """Parse the uploaded .xlsx bytes into a list of ParsedPairRow.
 
     Returns (rows, error). On error, rows is [] and error is a French message
     suitable for ValidationError.
     """
     try:
-        workbook = xlrd.open_workbook(file_contents=content)
+        workbook = openpyxl.load_workbook(
+            io.BytesIO(content), data_only=True, read_only=True
+        )
     except Exception:
         return [], "Le fichier est illisible ou corrompu."
 
-    try:
-        sheet = workbook.sheet_by_name(SHEET_NAME)
-    except xlrd.XLRDError:
+    if SHEET_NAME not in workbook.sheetnames:
         return [], f"La feuille '{SHEET_NAME}' est introuvable dans le fichier."
 
-    if sheet.nrows == 0:
+    sheet = workbook[SHEET_NAME]
+    data_rows = sheet.iter_rows(values_only=True)
+
+    header_row = next(data_rows, None)
+    if header_row is None:
         return [], "Le fichier ne contient aucune ligne d'en-tête."
 
-    header_row = sheet.row(0)
     try:
         col = _build_header_index(header_row)
     except ValueError as exc:
@@ -210,22 +209,23 @@ def _parse_xls(content: bytes) -> tuple[list[ParsedPairRow], str | None]:
     rows: list[ParsedPairRow] = []
     seen_licenses: set[str] = set()
 
-    for row_idx in range(1, sheet.nrows):
-        row_number = row_idx + 1  # row 1 = headers
+    for row_number, row in enumerate(data_rows, start=2):
+        if all(value is None or value == "" for value in row):
+            continue
 
         p1_license, p1_defaults, p1_error = _build_player_defaults(
-            sheet, row_idx, col, workbook, suffix=" J1"
+            row, col, suffix=" joueur 1"
         )
         if p1_error:
-            return [], f"Ligne {row_number} : {p1_error} (J1)."
+            return [], f"Ligne {row_number} : {p1_error} (joueur 1)."
 
         p2_license, p2_defaults, p2_error = _build_player_defaults(
-            sheet, row_idx, col, workbook, suffix=" J2"
+            row, col, suffix=" joueur 2"
         )
         if p2_error:
-            return [], f"Ligne {row_number} : {p2_error} (J2)."
+            return [], f"Ligne {row_number} : {p2_error} (joueur 2)."
 
-        for lic, player_label in [(p1_license, "J1"), (p2_license, "J2")]:
+        for lic, player_label in [(p1_license, "joueur 1"), (p2_license, "joueur 2")]:
             if not lic:
                 return (
                     [],
@@ -238,7 +238,7 @@ def _parse_xls(content: bytes) -> tuple[list[ParsedPairRow], str | None]:
                 )
             seen_licenses.add(lic)
 
-        weight = _cell_to_float(sheet.cell(row_idx, col["Poids paire"]))
+        weight = _value_to_float(row[col["Poids paire"]])
 
         rows.append(
             ParsedPairRow(
@@ -254,7 +254,7 @@ def _parse_xls(content: bytes) -> tuple[list[ParsedPairRow], str | None]:
     return rows, None
 
 
-def _create_pairs_from_xls(
+def _create_pairs_from_xlsx(
     tournament: Tournament, rows: list[ParsedPairRow]
 ) -> list[Pair]:
     with transaction.atomic():
@@ -370,10 +370,10 @@ class PairImportView(TournamentScopedMixin, APIView):
                 type=int,
             ),
         ],
-        summary="Import des paires depuis un fichier Excel (.xls)",
+        summary="Import des paires depuis un fichier Excel (.xlsx)",
         description=(
-            "Importe les paires d'un tournoi depuis un fichier Excel 97-2003 (.xls), "
-            "feuille 'Inscriptions' (une ligne = une paire). "
+            "Importe les paires d'un tournoi depuis un fichier Excel (.xlsx), "
+            "feuille 'Tableau final' (une ligne = une paire). "
             "Les paires existantes non présentes dans le fichier sont conservées. "
             "Si une paire avec les mêmes joueurs existe déjà, son poids est mis à jour. "
             "Les joueurs identifiés par leur numéro de licence sont créés ou mis à jour. "
@@ -394,11 +394,11 @@ class PairImportView(TournamentScopedMixin, APIView):
 
         uploaded_file = file_serializer.validated_data["file"]
         content = uploaded_file.read()
-        rows, error = _parse_xls(content)
+        rows, error = _parse_xlsx(content)
         if error:
             raise ValidationError({"file": [error]})
 
-        _create_pairs_from_xls(tournament, rows)
+        _create_pairs_from_xlsx(tournament, rows)
         pairs = match_and_update_rankings(tournament)
         output = PairSerializer(
             pairs,

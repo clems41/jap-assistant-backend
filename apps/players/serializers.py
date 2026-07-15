@@ -290,8 +290,8 @@ class PairImportSerializer(serializers.Serializer):
     file = serializers.FileField()
 
     def validate_file(self, value):
-        if not value.name.endswith(".xls"):
+        if not value.name.endswith(".xlsx"):
             raise serializers.ValidationError(
-                "Le fichier doit être au format Excel 97-2003 (.xls)."
+                "Le fichier doit être au format Excel (.xlsx)."
             )
         return value

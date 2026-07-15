@@ -2,6 +2,7 @@ from django.urls import path
 
 from apps.tournaments.views import (
     InformationsView,
+    SignalStatusView,
     TimeSlotDetailView,
     TimeSlotListCreateView,
     TournamentCategoryEnumView,
@@ -50,6 +51,12 @@ urlpatterns = [
     ),
     # Informations pre-fill helper — fixed path before <int:pk>
     path("informations/", InformationsView.as_view(), name="tournament-informations"),
+    # Debug — fixed path before <int:pk>
+    path(
+        "debug/signal-status/",
+        SignalStatusView.as_view(),
+        name="tournament-debug-signal-status",
+    ),
     # CRUD
     path("", TournamentListCreateView.as_view(), name="tournament-list"),
     path("<int:pk>/", TournamentDetailView.as_view(), name="tournament-detail"),

@@ -2,6 +2,7 @@ import functools
 from typing import Any
 
 from django.db.models import TextChoices
+from django.db.models.signals import post_delete, post_save
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -241,6 +242,38 @@ class TournamentRecomputeStatusView(APIView):
             {"status_before": status_before, "status_after": tournament.status}
         )
         return Response(serializer.data)
+
+
+class _SignalStatusSerializer(Serializer):
+    tournament_post_save_count = serializers.IntegerField()
+    pair_post_save_count = serializers.IntegerField()
+    pair_post_delete_count = serializers.IntegerField()
+    player_post_save_count = serializers.IntegerField()
+
+
+class SignalStatusView(APIView):
+    """Debug tool: report how many live post_save/post_delete receivers are
+    registered for Tournament/Pair/Player in this process.
+
+    Used to check whether apps.tournaments.signals.register_signals() (called
+    from TournamentsConfig.ready()) actually ran — if tournament_post_save_count
+    is 0, the automatic status recompute on save() is dead in this process.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: _SignalStatusSerializer})
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        from apps.players.models import Pair, Player
+
+        return Response(
+            {
+                "tournament_post_save_count": len(post_save._live_receivers(Tournament)),
+                "pair_post_save_count": len(post_save._live_receivers(Pair)),
+                "pair_post_delete_count": len(post_delete._live_receivers(Pair)),
+                "player_post_save_count": len(post_save._live_receivers(Player)),
+            }
+        )
 
 
 class TournamentGameFormatDurationView(APIView):

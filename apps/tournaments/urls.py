@@ -12,6 +12,7 @@ from apps.tournaments.views import (
     TournamentGenderEnumView,
     TournamentLeagueEnumView,
     TournamentListCreateView,
+    TournamentSetReadinessView,
 )
 
 urlpatterns = [
@@ -51,6 +52,11 @@ urlpatterns = [
     # CRUD
     path("", TournamentListCreateView.as_view(), name="tournament-list"),
     path("<int:pk>/", TournamentDetailView.as_view(), name="tournament-detail"),
+    path(
+        "<int:pk>/set-readiness/",
+        TournamentSetReadinessView.as_view(),
+        name="tournament-set-readiness",
+    ),
     # Time slots (sub-collection)
     path(
         "<int:tournament_id>/time-slots/",

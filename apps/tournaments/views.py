@@ -20,6 +20,7 @@ from apps.tournaments.serializers import (
     PublicTournamentSerializer,
     TimeSlotSerializer,
     TournamentSerializer,
+    TournamentSetReadinessSerializer,
 )
 
 
@@ -187,6 +188,26 @@ class TournamentDetailView(generics.RetrieveUpdateDestroyAPIView):
         if instance.is_locked:
             raise ConflictError("Ce tournoi ne peut plus être supprimé.")
         instance.delete()
+
+
+class TournamentSetReadinessView(APIView):
+    """Diagnostic breakdown of what's blocking a tournament from reaching Status.SET."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={200: TournamentSetReadinessSerializer},
+        summary="Diagnostic des conditions manquantes pour passer au statut SET",
+        description=(
+            "Détaille chaque condition requise pour que le tournoi passe automatiquement "
+            "au statut SET (configuration, format de jeu, nombre de paires, poids des paires, "
+            "classement des joueurs). Utile pour diagnostiquer un tournoi bloqué en DRAFT."
+        ),
+    )
+    def get(self, request: Request, pk: int) -> Response:
+        tournament = _get_tournament_for_user(pk, request.user)
+        serializer = TournamentSetReadinessSerializer(tournament.set_status_diagnostics())
+        return Response(serializer.data)
 
 
 class TournamentGameFormatDurationView(APIView):

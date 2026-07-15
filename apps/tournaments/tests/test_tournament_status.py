@@ -285,3 +285,120 @@ class TestTournamentRevertMethods:
 
         tournament.refresh_from_db()
         assert tournament.status == Tournament.Status.STARTED
+
+
+# ---------------------------------------------------------------------------
+# TestSetStatusDiagnostics
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestSetStatusDiagnostics:
+    def test_all_conditions_met(self) -> None:
+        tournament = _tournament_with_config()
+        for i in range(4):
+            PairFactory(tournament=tournament, weight=float(100 + i * 10))
+
+        diagnostics = tournament.set_status_diagnostics()
+
+        assert diagnostics["is_set_ready"] is True
+        assert diagnostics["missing_configuration"] is False
+        assert diagnostics["missing_game_format"] is False
+        assert diagnostics["pairs_count"] == 4
+        assert diagnostics["pairs_without_weight"] == []
+        assert diagnostics["players_without_ranking"] == []
+
+    def test_missing_configuration(self) -> None:
+        tournament = TournamentFactory(
+            game_format=Tournament.GameFormat.B1,
+            configuration=None,
+        )
+        for i in range(4):
+            PairFactory(tournament=tournament, weight=float(100 + i * 10))
+
+        diagnostics = tournament.set_status_diagnostics()
+
+        assert diagnostics["is_set_ready"] is False
+        assert diagnostics["missing_configuration"] is True
+        assert diagnostics["missing_game_format"] is False
+
+    def test_missing_game_format(self) -> None:
+        tournament = TournamentFactory(
+            game_format="",
+            configuration=Tournament.Configuration.TMC,
+        )
+        for i in range(4):
+            PairFactory(tournament=tournament, weight=float(100 + i * 10))
+
+        diagnostics = tournament.set_status_diagnostics()
+
+        assert diagnostics["is_set_ready"] is False
+        assert diagnostics["missing_game_format"] is True
+        assert diagnostics["missing_configuration"] is False
+
+    def test_fewer_than_four_pairs(self) -> None:
+        tournament = _tournament_with_config()
+        for i in range(2):
+            PairFactory(tournament=tournament, weight=float(100 + i * 10))
+
+        diagnostics = tournament.set_status_diagnostics()
+
+        assert diagnostics["is_set_ready"] is False
+        assert diagnostics["pairs_count"] == 2
+
+    def test_pair_without_weight_reported_and_others_unaffected(self) -> None:
+        tournament = _tournament_with_config()
+        unweighted_pair = PairFactory(tournament=tournament, weight=None)
+        for i in range(3):
+            PairFactory(tournament=tournament, weight=float(100 + i * 10))
+
+        diagnostics = tournament.set_status_diagnostics()
+
+        assert diagnostics["is_set_ready"] is False
+        assert diagnostics["pairs_count"] == 4
+        assert len(diagnostics["pairs_without_weight"]) == 1
+        reported = diagnostics["pairs_without_weight"][0]
+        assert reported["id"] == unweighted_pair.id
+        assert reported["player1"] == str(unweighted_pair.player1)
+        assert reported["player2"] == str(unweighted_pair.player2)
+
+    def test_player_without_ranking_reported(self) -> None:
+        tournament = _tournament_with_config()
+        player_without_ranking = PlayerFactory(ranking=None)
+        pair = PairFactory(
+            tournament=tournament,
+            weight=100.0,
+            player1=player_without_ranking,
+        )
+        for i in range(3):
+            PairFactory(tournament=tournament, weight=float(200 + i * 10))
+
+        diagnostics = tournament.set_status_diagnostics()
+
+        assert diagnostics["is_set_ready"] is False
+        assert len(diagnostics["players_without_ranking"]) == 1
+        reported = diagnostics["players_without_ranking"][0]
+        assert reported["pair_id"] == pair.id
+        assert reported["player_id"] == player_without_ranking.id
+        assert (
+            reported["full_name"]
+            == f"{player_without_ranking.first_name} {player_without_ranking.last_name}"
+        )
+
+    def test_multiple_simultaneous_failures_are_all_reported(self) -> None:
+        tournament = TournamentFactory(
+            game_format="",
+            configuration=None,
+        )
+        unweighted_pair = PairFactory(tournament=tournament, weight=None)
+        for i in range(2):
+            PairFactory(tournament=tournament, weight=float(100 + i * 10))
+
+        diagnostics = tournament.set_status_diagnostics()
+
+        assert diagnostics["is_set_ready"] is False
+        assert diagnostics["missing_configuration"] is True
+        assert diagnostics["missing_game_format"] is True
+        assert diagnostics["pairs_count"] == 3
+        assert len(diagnostics["pairs_without_weight"]) == 1
+        assert diagnostics["pairs_without_weight"][0]["id"] == unweighted_pair.id

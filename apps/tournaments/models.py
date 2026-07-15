@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.db import models
-from django.db.models import Q
 
 from apps.common.models import TimeStampedModel
 from apps.common.utils import generate_public_code
@@ -192,19 +191,57 @@ class Tournament(TimeStampedModel):
     def _conditions_for_set_are_met(self) -> bool:
         """Return True when the tournament has >= 4 fully weighted pairs
         (all players ranked), a configuration and a game_format."""
-        if not self.configuration or not self.game_format:
-            return False
+        return self.set_status_diagnostics()["is_set_ready"]
 
-        pairs = self.pairs.select_related("player1", "player2")
-        if pairs.count() < 4:
-            return False
+    def set_status_diagnostics(self) -> dict:
+        """Return a full breakdown of every condition required to reach Status.SET.
 
-        if pairs.filter(weight__isnull=True).exists():
-            return False
+        Unlike _conditions_for_set_are_met() (which short-circuits), this
+        evaluates every condition so a caller can see exactly what's missing.
+        """
+        pairs = list(self.pairs.select_related("player1", "player2"))
 
-        return not pairs.filter(
-            Q(player1__ranking__isnull=True) | Q(player2__ranking__isnull=True)
-        ).exists()
+        pairs_without_weight = [pair for pair in pairs if pair.weight is None]
+
+        players_without_ranking = []
+        for pair in pairs:
+            for player in (pair.player1, pair.player2):
+                if player.ranking is None:
+                    players_without_ranking.append(
+                        {
+                            "pair_id": pair.id,
+                            "player_id": player.id,
+                            "full_name": f"{player.first_name} {player.last_name}",
+                        }
+                    )
+
+        missing_configuration = not self.configuration
+        missing_game_format = not self.game_format
+        pairs_count = len(pairs)
+
+        is_set_ready = (
+            not missing_configuration
+            and not missing_game_format
+            and pairs_count >= 4
+            and not pairs_without_weight
+            and not players_without_ranking
+        )
+
+        return {
+            "is_set_ready": is_set_ready,
+            "missing_configuration": missing_configuration,
+            "missing_game_format": missing_game_format,
+            "pairs_count": pairs_count,
+            "pairs_without_weight": [
+                {
+                    "id": pair.id,
+                    "player1": str(pair.player1),
+                    "player2": str(pair.player2),
+                }
+                for pair in pairs_without_weight
+            ],
+            "players_without_ranking": players_without_ranking,
+        }
 
 
 class TimeSlot(TimeStampedModel):

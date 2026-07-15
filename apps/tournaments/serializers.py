@@ -70,6 +70,27 @@ class InformationsSerializer(serializers.Serializer):
     all_locations = serializers.ListField(child=serializers.CharField())
 
 
+class SetStatusPairWithoutWeightSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    player1 = serializers.CharField()
+    player2 = serializers.CharField()
+
+
+class SetStatusPlayerWithoutRankingSerializer(serializers.Serializer):
+    pair_id = serializers.IntegerField()
+    player_id = serializers.IntegerField()
+    full_name = serializers.CharField()
+
+
+class TournamentSetReadinessSerializer(serializers.Serializer):
+    is_set_ready = serializers.BooleanField()
+    missing_configuration = serializers.BooleanField()
+    missing_game_format = serializers.BooleanField()
+    pairs_count = serializers.IntegerField()
+    pairs_without_weight = SetStatusPairWithoutWeightSerializer(many=True)
+    players_without_ranking = SetStatusPlayerWithoutRankingSerializer(many=True)
+
+
 class TimeSlotSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimeSlot

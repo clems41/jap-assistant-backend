@@ -19,6 +19,7 @@ from apps.tournaments.serializers import (
     InformationsSerializer,
     PublicTournamentSerializer,
     TimeSlotSerializer,
+    TournamentRecomputeStatusSerializer,
     TournamentSerializer,
     TournamentSetReadinessSerializer,
 )
@@ -207,6 +208,38 @@ class TournamentSetReadinessView(APIView):
     def get(self, request: Request, pk: int) -> Response:
         tournament = _get_tournament_for_user(pk, request.user)
         serializer = TournamentSetReadinessSerializer(tournament.set_status_diagnostics())
+        return Response(serializer.data)
+
+
+class TournamentRecomputeStatusView(APIView):
+    """Debug tool: force Tournament.recompute_status() directly, bypassing
+    the save()/signal chain, and report the status before/after.
+
+    Used to isolate whether recompute_status() itself works correctly versus
+    whether the automatic post_save signal simply isn't firing for a given
+    request path.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={200: TournamentRecomputeStatusSerializer},
+        summary="Force le recalcul du statut d'un tournoi (outil de debug)",
+        description=(
+            "Appelle directement Tournament.recompute_status(), sans passer par "
+            "une sauvegarde ni un signal. Retourne le statut avant et après "
+            "l'appel. Outil de diagnostic — n'est normalement jamais nécessaire "
+            "puisque le statut se recalcule automatiquement."
+        ),
+    )
+    def post(self, request: Request, pk: int) -> Response:
+        tournament = _get_tournament_for_user(pk, request.user)
+        status_before = tournament.status
+        tournament.recompute_status()
+        tournament.refresh_from_db()
+        serializer = TournamentRecomputeStatusSerializer(
+            {"status_before": status_before, "status_after": tournament.status}
+        )
         return Response(serializer.data)
 
 

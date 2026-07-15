@@ -12,6 +12,7 @@ from apps.tournaments.views import (
     TournamentGenderEnumView,
     TournamentLeagueEnumView,
     TournamentListCreateView,
+    TournamentRecomputeStatusView,
     TournamentSetReadinessView,
 )
 
@@ -56,6 +57,11 @@ urlpatterns = [
         "<int:pk>/set-readiness/",
         TournamentSetReadinessView.as_view(),
         name="tournament-set-readiness",
+    ),
+    path(
+        "<int:pk>/recompute-status/",
+        TournamentRecomputeStatusView.as_view(),
+        name="tournament-recompute-status",
     ),
     # Time slots (sub-collection)
     path(

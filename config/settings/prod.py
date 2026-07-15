@@ -23,7 +23,7 @@ DATABASES = {
     "default": env.db("DATABASE_URL"),  # noqa: F405
 }
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
-DATABASES["default"]["CONN_MAX_AGE"] = 60
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=60)  # noqa: F405
 
 # ---------------------------------------------------------------------------
 # Security

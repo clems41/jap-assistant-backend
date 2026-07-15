@@ -91,6 +91,11 @@ class TournamentSetReadinessSerializer(serializers.Serializer):
     players_without_ranking = SetStatusPlayerWithoutRankingSerializer(many=True)
 
 
+class TournamentRecomputeStatusSerializer(serializers.Serializer):
+    status_before = serializers.CharField()
+    status_after = serializers.CharField()
+
+
 class TimeSlotSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimeSlot
